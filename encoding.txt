@@ -1135,4 +1135,4 @@ if "sersic":
 "COADD_WL" (int, >=1) - NUMBER OF SPECTRAL PIXEL TO USE FOR THE REBINNING
 
 Needed only for ifs
-"COADD_XY" (int, can be odd or even, 1x1, 2x2, 3x3, etc...)
+"COADD_XY" (int, can be odd or even, 1x1, 2x2, 3x3, etc...) or 'best' (string, to select the coadding that maximizes SNR.
