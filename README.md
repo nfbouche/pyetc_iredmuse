@@ -136,7 +136,7 @@ full_obs = {
     
     "COADD_WL": 10,
     
-    "COADD_XY": 1 or 'best'
+    "COADD_XY": 1 #(all integer numbers or 'best')
 }
 ```
 **NOTE**: *"COADD_XY": 'best' — automatically selects the spatial coadding that maximizes the SNR. Like the compute options in `time_from_source`, it updates "COADD_XY" in the obs dictionary with the chosen value.*
