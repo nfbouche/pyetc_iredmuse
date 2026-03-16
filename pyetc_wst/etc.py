@@ -39,7 +39,7 @@ tol_wave = 2
 n_fwhm = 4
 
 # number of wavelength points to for the PSF images
-wave_grid = 20  
+wave_grid = 5  
 
 # saturation threshold in e-/ph/counts
 threshold_sat = 50000  
@@ -64,11 +64,21 @@ __all__ = [
     'mask_spectra_in_dict',
     'convolve_and_center',
     'plot_noise_components',
-    'simulate_counts'
+    'simulate_counts',
+    'simulate_counts_vectorized'
 ]
 
 class ETC:
     """ Generic class for Exposure Time Computation (ETC) """
+
+    # Class-level PSF cache: key = (seeing, airmass, ins_name, spaxel_size, iq_beta, wave_tuple)
+    _psf_cache = {}
+    
+    # Class-level source image cache: key = (type, spaxel_size, fwhm/reff, beta/n, uneven)
+    _source_image_cache = {}
+    
+    # Class-level skycalc cache: key = (airmass, pwv, mss, ins, ch, lbda1, lbda2)
+    _skycalc_cache = {}
 
     def __init__(self, log=logging.INFO):
         self.logger = logging.getLogger(__name__)
@@ -302,12 +312,14 @@ class ETC:
 
         if static:
             # look up in the loaded static sky files
+            pwv = obs.get('pwv')
             available_airmass = set(sky['airmass'] for sky in conf['sky'])
             available_moon = set(sky['moon'] for sky in conf['sky'])
+            available_pwv = set(sky['pwv'] for sky in conf['sky'])
             for sky in conf['sky']:
-                if np.isclose(sky['airmass'], airmass) and (sky['moon'] == moon):
+                if np.isclose(sky['airmass'], airmass) and (sky['moon'] == moon) and np.isclose(sky['pwv'], pwv):
                     return sky['emi'], sky['abs']
-            raise ValueError(f"moon {moon} airmass {airmass} not found in loaded sky configurations. Available airmass: {sorted(available_airmass)}, available moon: {sorted(available_moon)}")
+            raise ValueError(f"moon {moon} airmass {airmass} pwv {pwv} not found in loaded sky configurations. Available airmass: {sorted(available_airmass)}, available moon: {sorted(available_moon)}, available pwv: {sorted(available_pwv)}")
         else:
             # compute on the fly with skycalc
 
@@ -325,6 +337,14 @@ class ETC:
             if pwv not in allowed_pwv:
                 self.logger.warning(f"PWV value not allowed, assigned the closest one: {pwv} → {closest_value}")
                 pwv = closest_value
+
+            # Build cache key for skycalc
+            cache_key = (round(airmass, 4), pwv, round(mss, 2), 
+                        obs['INS'], obs['CH'], conf['lbda1'], conf['lbda2'], conf['dlbda'])
+            
+            # Check cache
+            if cache_key in ETC._skycalc_cache:
+                return ETC._skycalc_cache[cache_key]
 
             skycalc = skycalc_ipy.SkyCalc()
             skycalc["msolflux"] = 130
@@ -350,6 +370,9 @@ class ETC:
             
             d_abs = Spectrum(data=tab['trans'], wave=wave)
             d_abs = d_abs.resample(conf['dlbda'], start=conf['lbda1'], shape=int((conf['lbda2'] - conf['lbda1']) / conf['dlbda']) + 1)
+    
+            # Cache the result
+            ETC._skycalc_cache[cache_key] = (d_emi_lsfpix, d_abs)
 
             return d_emi_lsfpix, d_abs
 
@@ -458,8 +481,14 @@ class ETC:
                                                     crval=def_wave[0]))
 
             # Resample
-            rspec = spec_raw.resample(lstep, start=l1)
-            spec_cut = rspec.subspec(lmin=l1, lmax=l2)
+            #rspec = spec_raw.resample(lstep, start=l1)
+            #spec_cut = rspec.subspec(lmin=l1, lmax=l2)
+
+            # # # fastest resampling 
+            npts = conf['instrans'].shape[0]
+            target_wave = np.linspace(l1, l1 + (npts - 1) * lstep, npts)
+            resampled_flux = np.interp(target_wave, def_wave, flux * K)
+            spec_cut = Spectrum(data=resampled_flux, wave=WaveCoord(cdelt=lstep, crval=l1))
             
             return spec_raw, spec_cut
 
@@ -480,13 +509,25 @@ class ETC:
 
          """
 
+        # Build cache key based on image type and parameters
+        if dima['type'] == 'moffat':
+            cache_key = ('moffat', ins['spaxel_size'], round(dima['fwhm'], 6), 
+                        round(dima['beta'], 6), dima.get('uneven', 0))
+        elif dima['type'] == 'sersic':
+            cache_key = ('sersic', ins['spaxel_size'], round(dima['reff'], 6),
+                        round(dima['n'], 6), dima.get('uneven', 0))
+        else:
+            raise ValueError(f"Unknown image type {dima['type']}")
+        
+        if cache_key in ETC._source_image_cache:
+            return ETC._source_image_cache[cache_key]
+        
         if dima['type'] == 'moffat':
             ima = moffat(ins['spaxel_size'], dima['fwhm'], dima['beta'], uneven=dima.get('uneven', 0))
         elif dima['type'] == 'sersic':
             ima = sersic(ins['spaxel_size'], dima['reff'], dima['n'], uneven=dima.get('uneven', 0))
-        else:
-            raise ValueError(f"Unknown image type {dima['type']}")
-
+        
+        ETC._source_image_cache[cache_key] = ima
         return ima
 
     # PSF images at a specific wavelengths
@@ -511,6 +552,17 @@ class ETC:
             iq : float or np.ndarray
                 FWHM(s) used for PSF(s)
         """
+        wave_tuple = tuple(np.atleast_1d(wave))
+        cache_key = (
+            round(self.obs['seeing'], 4),
+            round(self.obs['airmass'], 4),
+            ins['name'], ins['spaxel_size'], ins['iq_beta'],
+            wave_tuple, uneven
+        )
+        
+        if cache_key in ETC._psf_cache:
+            return ETC._psf_cache[cache_key]
+        
         iq, _ = get_seeing_fwhm(
             self.obs['seeing'],
             self.obs['airmass'],
@@ -520,12 +572,11 @@ class ETC:
             ins['iq_fwhm_ins']
         )
 
-        # Manage single or multiple wavelengths
         if np.isscalar(iq):
             ima = moffat(ins['spaxel_size'], iq, ins['iq_beta'], uneven=uneven)
             ima.data /= ima.data.sum()
             ima.oversamp = 10
-            return ima
+            result = ima
         else:
             ima_arr = []
             for val in iq:
@@ -533,7 +584,32 @@ class ETC:
                 ima.data /= ima.data.sum()
                 ima.oversamp = 10
                 ima_arr.append(ima)
-            return ima_arr
+            result = ima_arr
+        
+        ETC._psf_cache[cache_key] = result
+        return result
+
+    @classmethod
+    def clear_psf_cache(cls):
+        """Clear the PSF cache to free memory."""
+        cls._psf_cache.clear()
+    
+    @classmethod
+    def clear_source_image_cache(cls):
+        """Clear the source image cache to free memory."""
+        cls._source_image_cache.clear()
+    
+    @classmethod
+    def clear_skycalc_cache(cls):
+        """Clear the skycalc cache to free memory."""
+        cls._skycalc_cache.clear()
+    
+    @classmethod
+    def clear_all_caches(cls):
+        """Clear all ETC caches to free memory."""
+        cls._psf_cache.clear()
+        cls._source_image_cache.clear()
+        cls._skycalc_cache.clear()
 
     # IFS function for the fraction of flux collected in peak spaxel and in NxN region
     # added the difference between odd/even N
@@ -659,7 +735,7 @@ class ETC:
         spaxel_size = ins['spaxel_size']  # in arcsec
         
         # Create a copy of the input image
-        ima_out = ima.copy()
+        #ima_out = ima.copy()
         
         # Calculate the aperture radius in pixels
         oversamp = ima.oversamp
@@ -687,10 +763,12 @@ class ETC:
         original_flux = np.sum(ima.data)
         
         # Apply aperture mask - set pixels outside aperture to zero
-        ima_out.data[~aperture_mask] = 0.0
+        #ima_out.data[~aperture_mask] = 0.0
         
         # Calculate flux after aperture application
-        collected_flux = np.sum(ima_out.data)
+        #collected_flux = np.sum(ima_out.data)
+        
+        collected_flux = np.sum(ima.data[aperture_mask])
         
         # Calculate flux fraction
         if original_flux > 0:
@@ -700,6 +778,67 @@ class ETC:
         
         return flux_fraction
 
+    def mos_fiber_aperture_batch(self, ins, ima_list, displacement=0.0):
+        """
+        Compute fiber aperture flux fractions for multiple images at once.
+        Optimized to compute the aperture mask only once if all images have the same shape.
+        
+        Parameters
+        ----------
+        ins : dict
+            instrument configuration dictionary
+        ima_list : list of MPDAF Image
+            list of input source images
+        displacement : float
+            displacement of fiber center from image center along x-axis in arcsec
+            
+        Returns
+        -------
+        list of float
+            flux fractions for each image
+        """
+        if not ima_list:
+            return []
+        
+        # Get aperture parameters (same for all images)
+        aperture_diameter = ins['aperture']
+        aperture_radius = aperture_diameter / 2.0
+        spaxel_size = ins['spaxel_size']
+        
+        # Cache for masks by image shape
+        mask_cache = {}
+        
+        flux_fractions = []
+        for ima in ima_list:
+            ny, nx = ima.shape
+            shape_key = (ny, nx)
+            
+            # Get or compute mask for this shape
+            if shape_key not in mask_cache:
+                oversamp = ima.oversamp
+                aperture_radius_pix = aperture_radius * oversamp / spaxel_size
+                displacement_x_pix = displacement * oversamp / spaxel_size
+                
+                image_center_y, image_center_x = ny // 2, nx // 2
+                fiber_center_x = image_center_x + displacement_x_pix
+                fiber_center_y = image_center_y
+                
+                y_coords, x_coords = np.mgrid[0:ny, 0:nx]
+                distances = np.sqrt((x_coords - fiber_center_x)**2 + (y_coords - fiber_center_y)**2)
+                mask_cache[shape_key] = distances <= aperture_radius_pix
+            
+            aperture_mask = mask_cache[shape_key]
+            
+            original_flux = np.sum(ima.data)
+            if original_flux > 0:
+                collected_flux = np.sum(ima.data[aperture_mask])
+                flux_fractions.append(collected_flux / original_flux)
+            else:
+                flux_fractions.append(0.0)
+        
+        return flux_fractions
+
+    # Vectorized version
     def rebin_spectrum(self, nph_source, tot_noise, bin_factor=2):
         """Rebin a MPDAF spectrum and its noise by combining adjacent pixels
     
@@ -717,52 +856,28 @@ class ETC:
         bin_snr : MPDAF Spectrum
             Rebinned spectrum of the SNR on original wavelength grid
         """
-        # Get original wavelength grid
         waves = nph_source.wave.coord()
-    
-        # Calculate centers of bins
-        n_bins = len(waves) // bin_factor  
-        bin_centers = np.array([
-            np.mean(waves[i:i+bin_factor])
-            for i in range(0, n_bins * bin_factor, bin_factor)
-        ])
-    
-        # Bin the signal (sum)
-        binned_signal = np.array([
-            np.sum(nph_source.data[i:i+bin_factor]) 
-            for i in range(0, n_bins * bin_factor, bin_factor)
-        ])
-    
-        # Bin the noise (quadrature sum)
-        binned_noise = np.array([
-            np.sqrt(np.sum(tot_noise.data[i:i+bin_factor]**2))
-            for i in range(0, n_bins * bin_factor, bin_factor)
-        ])
-    
-        # Create temporary spectra with binned data
-        temp_signal = Spectrum(data=binned_signal,
-                            wave=WaveCoord(cdelt=nph_source.wave.get_step()*bin_factor,
-                                     crval=bin_centers[0]))
-    
-        temp_noise = Spectrum(data=binned_noise,
-                       wave=WaveCoord(cdelt=tot_noise.wave.get_step()*bin_factor,
-                                    crval=bin_centers[0]))
-    
-        # Resample back to original wavelength grid
-        final_signal = temp_signal.resample(nph_source.wave.get_step(),
-                                     start=nph_source.wave.get_start(),
-                                     shape=len(waves))
-    
-        final_noise = temp_noise.resample(tot_noise.wave.get_step(),
-                                   start=tot_noise.wave.get_start(), 
-                                   shape=len(waves))
-
-        # Edge masking
-        final_signal.data = mask_spectrum_edges(final_signal.data.data, bin_factor)
-        final_noise.data = mask_spectrum_edges(final_noise.data.data, bin_factor)
-
-        bin_snr = final_signal / final_noise
-
+        n_waves = len(waves)
+        n_bins = n_waves // bin_factor
+        n_valid = n_bins * bin_factor
+        
+        signal_reshaped = nph_source.data[:n_valid].reshape(n_bins, bin_factor)
+        noise_reshaped = tot_noise.data[:n_valid].reshape(n_bins, bin_factor)
+        
+        binned_signal = signal_reshaped.sum(axis=1)
+        binned_noise = np.sqrt((noise_reshaped**2).sum(axis=1))
+        
+        waves_reshaped = waves[:n_valid].reshape(n_bins, bin_factor)
+        bin_centers = waves_reshaped.mean(axis=1)
+        
+        final_signal = np.interp(waves, bin_centers, binned_signal)
+        final_noise = np.interp(waves, bin_centers, binned_noise)
+        
+        final_signal = mask_spectrum_edges(final_signal, bin_factor)
+        final_noise = mask_spectrum_edges(final_noise, bin_factor)
+        
+        snr_data = final_signal / final_noise
+        bin_snr = Spectrum(data=snr_data, wave=nph_source.wave)
         return bin_snr
 
     # # # # # # # # # # 
@@ -981,7 +1096,9 @@ class ETC:
         res['spec']['noise']['frac_ron'] = frac_ron_square
 
         # Simulate 1D spectrum with noise in extraction aperture (obs['ima_coadd']**2)
+        '''
         simulated_data = []
+
         for i in range(len(wave)):
             # Per-pixel values
             s_pix = source_ph_square.data[i] / (obs['ima_coadd']**2)
@@ -1000,8 +1117,17 @@ class ETC:
                 RON=ins['ron']
             )
             simulated_data.append(sim_counts)
+        '''
+        # Vectorized simulation of counts for the entire spectrum
+        npix = obs['ima_coadd']**2
+        source_pix = np.clip(np.nan_to_num(source_ph_square.data / npix, nan=0.0), 0, None)
+        sky_pix = np.clip(np.nan_to_num(sky_ph_spaxel.data, nan=0.0), 0, None)
         
-        res['spec']['simulated_counts'] = Spectrum(data=np.array(simulated_data), wave=spec.wave)
+        simulated_data = simulate_counts_vectorized(
+            npix=npix, source_arr=source_pix, sky_arr=sky_pix,
+            dark=dark, RON=ins['ron']
+        )
+        res['spec']['simulated_counts'] = Spectrum(data=simulated_data, wave=spec.wave)
 
         # if spectral rebinning is requested
         if 'spbin' in obs and obs['spbin'] > 1:
@@ -1152,10 +1278,7 @@ class ETC:
                     array_of_images.append(conv_ima)
 
             # we take the fraction of flux collected by the fiber aperture
-            frac_fiber = []
-            for selected_im in array_of_images:
-                ffiber = self.mos_fiber_aperture(ins, selected_im, displacement=obs["disp"])
-                frac_fiber.append(ffiber)
+            frac_fiber = self.mos_fiber_aperture_batch(ins, array_of_images, displacement=obs["disp"])
 
             # Interpolate onto the full wave grid
             frac_fiber_full = np.interp(wave, selected_wave, frac_fiber)
@@ -1201,23 +1324,22 @@ class ETC:
         res['spec']['noise']['frac_ron'] = frac_ron_aperture
 
         # Simulate 1D spectrum with noise in extraction aperture (num_trace * trace_pixel_width)
-        simulated_data = []
-        for i in range(len(wave)):
-            # Per-pixel values
-            s_pix = source_ph_aperture.data[i] / (num_trace * trace_pixel_width)
-            sky_pix = sky_ph_aperture.data[i] / (num_trace * trace_pixel_width)
-            d_pix = dark / (num_trace * trace_pixel_width)
-            
-            sim_counts = simulate_counts(
-                npix=num_trace * trace_pixel_width,
-                source=s_pix,
-                sky=sky_pix,
-                dark=d_pix,
-                RON=ins['ron']
-            )
-            simulated_data.append(sim_counts)
+        npix = num_trace * trace_pixel_width
         
-        res['spec']['simulated_counts'] = Spectrum(data=np.array(simulated_data), wave=spec.wave)
+        # Per-pixel values for all wavelengths (vectorized)
+        source_pix = np.clip(np.nan_to_num(source_ph_aperture.data / npix, nan=0.0), 0, None)
+        sky_pix = np.clip(np.nan_to_num(sky_ph_aperture.data / npix, nan=0.0), 0, None)
+        dark_pix = dark / npix
+        
+        simulated_data = simulate_counts_vectorized(
+            npix=npix,
+            source_arr=source_pix,
+            sky_arr=sky_pix,
+            dark=dark_pix,
+            RON=ins['ron']
+        )
+        
+        res['spec']['simulated_counts'] = Spectrum(data=simulated_data, wave=spec.wave)
 
         # if spectral rebinning is requested
         if 'spbin' in obs and obs['spbin'] > 1:
@@ -1283,6 +1405,208 @@ class ETC:
             self.logger.debug("---------------------")
     
         return res
+
+    # # # # # # # # # # # # # # # # # 
+    # # # # # SNR at single λ # # # #
+    # # # # # # # # # # # # # # # # #
+
+    def snr_at_wave(self, ins, ima, spec, wave_target=None, debug=False):
+        """Compute SNR at a single wavelength (fast version).
+        
+        This is a lightweight version of snr_from_source that computes the SNR
+        at a single wavelength only, avoiding unnecessary computations over 
+        the full spectral range. Ideal for iterative optimizations.
+        
+        Parameters
+        ----------
+        ins : dict
+            Instrument configuration (eg self.ifs['blue'] or self.moslr['red'])
+        ima : MPDAF image or None
+            Source image (None for sb/ps)
+        spec : MPDAF spectrum
+            Source spectrum
+        wave_target : float or None
+            Target wavelength in Angstrom. If None, uses obs['snr_wave'] 
+            or obs['wave_line_center'] for line spectra.
+        debug : bool
+            Print debug info (Default value = False)
+        
+        Returns
+        -------
+        dict
+            SNR values at the target wavelength including:
+            - wave: target wavelength
+            - snr_peak: SNR in peak spaxel (IFS only)
+            - snr_aperture: SNR in extraction aperture
+            - nph_source_*: source photon counts
+            - nph_sky_*: sky photon counts
+            - noise_*: total noise
+        """
+        obs = self.obs
+        _checkobs(self.obs, keys=['dit', 'ndit'])
+        start_time = time.time()
+        
+        # Determine target wavelength (same logic as time_from_source)
+        if wave_target is None:
+            if obs['spec_type'] == 'line':
+                wave_target = obs['wave_line_center']
+            else:
+                if obs.get('snr_wave') is None:
+                    raise ValueError("snr_wave must be set in obs or passed as wave_target")
+                wave_target = obs['snr_wave']
+        
+        # Check wavelength is in range (same checks as time_from_source)
+        if obs['spec_type'] == 'line':
+            if (ins['lbda1'] > wave_target - tol_wave * obs['wave_line_fwhm']) or \
+               (ins['lbda2'] < wave_target + tol_wave * obs['wave_line_fwhm']):
+                raise ValueError('The line center is outside (or partially outside) the instrument spectral range')
+        else:
+            if (ins['lbda1'] > wave_target - tol_wave * default_angstrom_edge) or \
+               (ins['lbda2'] < wave_target + tol_wave * default_angstrom_edge):
+                raise ValueError('The SNR wavelength is outside (or almost outside) the instrument spectral range')
+        
+        # Unit conversion factors
+        flux = 1.0
+        if obs['spec_type'] == 'cont':
+            flux *= ins['dlbda']
+        if obs['ima_type'] == 'sb' and ins['type'] == 'IFS':
+            flux *= ins['spaxel_size']**2
+        
+        # LSF convolution of the spectrum (same as snr_from_source)
+        spec_conv = spec.filter(width=ins['lsfpix'])
+        
+        # Get values at target wavelength via interpolation
+        wave_full = spec_conv.wave.coord()
+        spec_at_wave = np.interp(wave_target, wave_full, spec_conv.data)
+        sky_at_wave = np.interp(wave_target, obs['skyemi'].wave.coord(), obs['skyemi'].data)
+        ins_at_wave = np.interp(wave_target, ins['instrans'].wave.coord(), ins['instrans'].data)
+        atm_at_wave = np.interp(wave_target, obs['skyabs'].wave.coord(), obs['skyabs'].data)
+        
+        # Telescope effective area
+        if ins['type'] == 'IFS':
+            tel_eff_area = self.tel['effective_area_IFS']
+        else:
+            tel_eff_area = self.tel['effective_area_MOS']
+        
+        dl = ins['dlbda']
+        
+        # Conversion factors at this wavelength
+        a = (wave_target * 1e-8 / (H_cgs * C_cgs)) * (tel_eff_area * 1e4) * atm_at_wave
+        Kt = ins_at_wave * a
+        
+        if ins['type'] == 'IFS':
+            res = self._snr_at_wave_ifs(ins, ima, spec_at_wave, wave_target, flux, Kt, 
+                                          ins_at_wave, sky_at_wave, tel_eff_area, dl, debug)
+        else:
+            res = self._snr_at_wave_mos(ins, ima, spec_at_wave, wave_target, flux, Kt,
+                                          ins_at_wave, sky_at_wave, tel_eff_area, dl, debug)
+        
+        if debug:
+            end_time = time.time()
+            self.logger.debug(f"snr_at_wave processing time: {end_time - start_time:.4f} seconds")
+        
+        return res
+
+    def _snr_at_wave_ifs(self, ins, ima, spec_at_wave, wave_target, flux, Kt, 
+                         ins_at_wave, sky_at_wave, tel_eff_area, dl, debug):
+        """Internal IFS SNR computation at single wavelength."""
+        obs = self.obs
+        
+        Ksky = ins_at_wave * ins['spaxel_size']**2 * tel_eff_area * (dl / 1e4)
+        
+        dark = ins['dcurrent'] * obs['dit'] * obs['ndit'] / 3600
+        ron = ins['ron']**2 * obs['ndit']
+        sky_ph_spaxel = sky_at_wave * Ksky * obs['dit'] * obs['ndit']
+        
+        factor_source = spec_at_wave * flux * Kt * obs['dit'] * obs['ndit']
+        
+        if obs['ima_type'] == 'sb':
+            source_ph_peak = factor_source
+            source_ph_square = source_ph_peak * obs['ima_coadd']**2
+            
+        elif obs['ima_type'] in ['ps', 'resolved']:
+            # Compute PSF at single wavelength only
+            uneven = 1 if obs['ima_coadd'] % 2 == 1 else 0
+            psf_ima = self.get_image_psf(ins, wave_target, uneven=uneven)
+            
+            if obs['ima_type'] == 'resolved':
+                if ima is None:
+                    raise ValueError("For resolved sources, image must not be None.")
+                psf_ima = convolve_and_center(ima, psf_ima)
+            
+            fpeak, fsq = self.ifs_spaxel_aperture(ins, psf_ima, N=obs['ima_coadd'])
+            
+            source_ph_peak = factor_source * fpeak
+            source_ph_square = factor_source * fsq
+        
+        # SNR calculations
+        sky_ph_square = sky_ph_spaxel * obs['ima_coadd']**2
+        dark_square = dark * obs['ima_coadd']**2
+        ron_square = ron * obs['ima_coadd']**2
+        
+        tot_noise_peak = np.sqrt(source_ph_peak + sky_ph_spaxel + dark + ron)
+        snr_peak = source_ph_peak / tot_noise_peak
+        
+        tot_noise_square = np.sqrt(source_ph_square + sky_ph_square + dark_square + ron_square)
+        snr_square = source_ph_square / tot_noise_square
+        
+        if debug:
+            self.logger.debug(f"SNR at {wave_target:.1f} AA: peak={snr_peak:.2f}, aperture={snr_square:.2f}")
+        
+        return {
+            'wave': wave_target,
+            'snr_peak': snr_peak,
+            'snr_aperture': snr_square,
+            'nph_source_peak': source_ph_peak,
+            'nph_source_aperture': source_ph_square,
+            'nph_sky_peak': sky_ph_spaxel,
+            'nph_sky_aperture': sky_ph_square,
+            'noise_peak': tot_noise_peak,
+            'noise_aperture': tot_noise_square
+        }
+
+    def _snr_at_wave_mos(self, ins, ima, spec_at_wave, wave_target, flux, Kt,
+                          ins_at_wave, sky_at_wave, tel_eff_area, dl, debug):
+        """Internal MOS SNR computation at single wavelength."""
+        obs = self.obs
+        num_trace = 1 if ins['name'] == 'moslr' else 7
+        trace_pixel_width = int(np.ceil(ins['lsfpix']))
+        
+        Ksky = ins_at_wave * (np.pi * ins['aperture'] / 2)**2 * tel_eff_area * (dl / 1e4)
+        
+        sky_ph_aperture = sky_at_wave * Ksky * obs['dit'] * obs['ndit']
+        dark = ins['dcurrent'] * obs['dit'] * obs['ndit'] / 3600 * num_trace * trace_pixel_width
+        ron = ins['ron']**2 * obs['ndit'] * num_trace * trace_pixel_width
+        
+        factor_source = spec_at_wave * flux * Kt * obs['dit'] * obs['ndit']
+        
+        if obs['ima_type'] == 'sb':
+            source_ph_aperture = factor_source * (np.pi * ins['aperture'] / 2)**2
+            
+        elif obs['ima_type'] in ['ps', 'resolved']:
+            psf_ima = self.get_image_psf(ins, wave_target)
+            
+            if obs['ima_type'] == 'resolved':
+                if ima is None:
+                    raise ValueError("For resolved sources, image must not be None.")
+                psf_ima = convolve_and_center(ima, psf_ima)
+            
+            ffiber = self.mos_fiber_aperture(ins, psf_ima, displacement=obs.get("disp", 0))
+            source_ph_aperture = factor_source * ffiber
+        
+        tot_noise = np.sqrt(source_ph_aperture + sky_ph_aperture + dark + ron)
+        snr_aperture = source_ph_aperture / tot_noise
+        
+        if debug:
+            self.logger.debug(f"SNR at {wave_target:.1f} AA: aperture={snr_aperture:.2f}")
+        
+        return {
+            'wave': wave_target,
+            'snr_aperture': snr_aperture,
+            'nph_source': source_ph_aperture,
+            'nph_sky': sky_ph_aperture,
+            'noise': tot_noise
+        }
 
     # # # # # # # # # # # # # 
     # # # # # TIMES # # # # # 
@@ -1373,10 +1697,10 @@ class ETC:
         if debug:
             self.logger.debug(f"Spectrum convolved with LSF of {ins['lsfpix']} pixels")
 
-        # we select only wave_grid points in wavelength (for the variable PSF computation)
+        # For time_from_source, we only need PSF at snr_wave, not full wave_grid
         wave = spec.wave.coord()
-        indices = np.linspace(0, len(wave) - 1, wave_grid, dtype=int)
-        selected_wave = wave[indices]
+        snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+        snr_wave_actual = wave[snr_idx]
 
         # telescope effective area
         tel_eff_area = self.tel['effective_area_IFS']
@@ -1405,36 +1729,24 @@ class ETC:
             source_ph_square = source_ph_peak * obs['ima_coadd']**2
 
         elif obs['ima_type'] in ['ps', 'resolved']:
+            # Compute PSF only at snr_wave (1 wavelength instead of wave_grid)
             uneven = 1 if obs['ima_coadd'] % 2 == 1 else 0
-            psf_array = self.get_image_psf(ins, selected_wave, uneven=uneven)
+            psf_single = self.get_image_psf(ins, snr_wave_actual, uneven=uneven)
             
             if obs['ima_type'] == 'ps':
-                array_of_images = psf_array
+                selected_image = psf_single
             
             elif obs['ima_type'] == 'resolved':
-                array_of_images = []
                 if ima is None:
                     raise ValueError("For resolved sources, source image must not be None.")
+                selected_image = convolve_and_center(ima, psf_single)
 
-                for impsf in psf_array:
-                    conv_ima = convolve_and_center(ima, impsf)
-                    array_of_images.append(conv_ima)
+            # Compute aperture fractions for single image
+            frac_peak_snr, frac_square_snr = self.ifs_spaxel_aperture(ins, selected_image, N=obs['ima_coadd'])
 
-            # we take the fraction of flux in the central spaxel and in the NxN region
-            frac_peak_spaxel = []
-            frac_square = []
-            for selected_im in array_of_images:
-                fpeak, fsq = self.ifs_spaxel_aperture(ins, selected_im, N=obs['ima_coadd'])
-                frac_peak_spaxel.append(fpeak)
-                frac_square.append(fsq)
-
-            # Interpolate onto the full wave grid
-            frac_peak_spaxel_full = np.interp(wave, selected_wave, frac_peak_spaxel)
-            frac_square_full = np.interp(wave, selected_wave, frac_square)
-
-            # we compute the source counts
-            source_ph_peak = factor_source * frac_peak_spaxel_full
-            source_ph_square = factor_source * frac_square_full
+            # Apply fractions to full spectrum (use snr_wave fraction for all)
+            source_ph_peak = factor_source * frac_peak_snr
+            source_ph_square = factor_source * frac_square_snr
 
         snrv = obs['snr']
 
@@ -1637,10 +1949,10 @@ class ETC:
         if debug:
             self.logger.debug(f"Spectrum convolved with LSF of {ins['lsfpix']} pixels")
 
-        # we select only wave_grid points in wavelength (for the variable PSF computation)
+        # For time_from_source, we only need PSF at snr_wave, not full wave_grid
         wave = spec.wave.coord()
-        indices = np.linspace(0, len(wave) - 1, wave_grid, dtype=int)
-        selected_wave = wave[indices]
+        snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+        snr_wave_actual = wave[snr_idx]
 
         # telescope effective area
         tel_eff_area = self.tel['effective_area_MOS']
@@ -1661,7 +1973,7 @@ class ETC:
 
         # number of vertical pixels needed to fully extract each trace in MOS HR and MOS LR
         trace_pixel_width = int(np.ceil(ins['lsfpix']))
-        
+
         dark = ins['dcurrent'] / 3600 * num_trace * trace_pixel_width
         ron = ins['ron']**2 * num_trace * trace_pixel_width
 
@@ -1674,31 +1986,22 @@ class ETC:
             source_ph_aperture = factor_source * (np.pi * ins['aperture'] / 2)**2
         
         elif obs['ima_type'] in ['ps', 'resolved']:
-            psf_array = self.get_image_psf(ins, selected_wave)
+            # Compute PSF only at snr_wave (1 wavelength instead of wave_grid)
+            psf_single = self.get_image_psf(ins, snr_wave_actual)
             
             if obs['ima_type'] == 'ps':
-                array_of_images = psf_array
+                selected_image = psf_single
             
             elif obs['ima_type'] == 'resolved':
-                array_of_images = []
                 if ima is None:
                     raise ValueError("For resolved sources, source image must not be None.")
+                selected_image = convolve_and_center(ima, psf_single)
 
-                for impsf in psf_array:
-                    conv_ima = convolve_and_center(ima, impsf)
-                    array_of_images.append(conv_ima)
+            # Compute fiber aperture fraction for single image
+            frac_fiber_snr = self.mos_fiber_aperture(ins, selected_image, displacement=obs["disp"])
 
-            # we take the fraction of flux collected by the fiber aperture
-            frac_fiber = []
-            for selected_im in array_of_images:
-                ffiber = self.mos_fiber_aperture(ins, selected_im, displacement=obs["disp"])
-                frac_fiber.append(ffiber)
-
-            # Interpolate onto the full wave grid
-            frac_fiber_full = np.interp(wave, selected_wave, frac_fiber)
-
-            # we compute the source counts
-            source_ph_aperture = factor_source * frac_fiber_full
+            # Apply fiber fraction to full spectrum (use snr_wave fraction for all)
+            source_ph_aperture = factor_source * frac_fiber_snr
 
             snrv = obs['snr']
 
@@ -1905,8 +2208,9 @@ def get_data(obj, chan, name, skydir, transdir):
         f = os.path.basename(fname).split('_')
         moon = f[0]
         moons.append(moon)
-        airmass = float(f[1][:-5])
-        d = dict(moon=moon, airmass=airmass)
+        airmass = float(f[1])
+        pwv = float(f[2][:-5])
+        d = dict(moon=moon, airmass=airmass, pwv=pwv)
 
         tab = Table.read(fname, unit_parse_strict="silent")
 
@@ -2116,12 +2420,11 @@ def compute_sky(outdir):
     all_moons = ['darksky', 'greysky', 'brightsky']
     all_mss = [0, 90, 180]
     all_airmass = [1.0, 1.2, 1.5, 2.0]
-    pwv = 3.5
+    all_pwv = [1.0, 3.5, 10.0]
 
     skycalc = skycalc_ipy.SkyCalc()
     skycalc["msolflux"] = 130
     skycalc['observatory'] = 'paranal'
-    skycalc['pwv'] = pwv
     skycalc['wgrid_mode'] = 'fixed_wavelength_step'
     skycalc['wmin'] = 300
     skycalc['wmax'] = 1200
@@ -2131,15 +2434,17 @@ def compute_sky(outdir):
         skycalc['airmass'] = am
         for moon, mss in zip(all_moons, all_mss):
             skycalc['moon_sun_sep'] = mss
-            tbl = skycalc.get_sky_spectrum(return_type="tab-ext")
-            tbl.meta['AIRMASS'] = am
-            tbl.meta['MOONPH'] = moon
-            tbl.meta['MSS'] = mss
-            tbl.meta['PWV'] = pwv
-            fname = f"{moon}_{am:.1f}.fits"
-            outpath = os.path.join(outdir, fname)
-            tbl.write(outpath, format='fits', overwrite=True)
-            print(f"Saved: {outpath}")
+            for pwv in all_pwv:
+                skycalc['pwv'] = pwv
+                tbl = skycalc.get_sky_spectrum(return_type="tab-ext")
+                tbl.meta['AIRMASS'] = am
+                tbl.meta['MOONPH'] = moon
+                tbl.meta['MSS'] = mss
+                tbl.meta['PWV'] = pwv
+                fname = f"{moon}_{am:.1f}_{pwv:.1f}.fits"
+                outpath = os.path.join(outdir, fname)
+                tbl.write(outpath, format='fits', overwrite=True)
+                print(f"Saved: {outpath}")
 
     print("\nAll sky spectra successfully saved.")
 
@@ -2275,6 +2580,19 @@ def simulate_counts(npix, source=None, sky=None, dark=None, RON=None, seed=None)
     # Totals
     total_counts = noisy_counts.sum()
 
+    return total_counts
+
+# simulate counts function vectorized
+def simulate_counts_vectorized(npix, source_arr, sky_arr, dark, RON, seed=None):
+    """Vectorized simulation of total observed counts for all wavelength pixels at once."""
+    rng = np.random.default_rng(seed)
+    n_wave = len(source_arr)
+    mean_signal = source_arr + sky_arr + dark
+    mean_2d = np.broadcast_to(mean_signal[:, np.newaxis], (n_wave, npix))
+    poisson_counts = rng.poisson(mean_2d)
+    ron_noise = rng.normal(0, RON, size=(n_wave, npix))
+    noisy_counts = poisson_counts + ron_noise
+    total_counts = noisy_counts.sum(axis=1)
     return total_counts
 
 # # # # # # # # # # # # # # # #

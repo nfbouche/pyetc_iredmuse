@@ -174,6 +174,9 @@ class SEDModels:
     """
     Class for generating spectral energy distribution (SED) models.
     """
+    # Class-level cache for loaded templates
+    _template_cache = {}
+    
     def __init__(self):
         # Save all filenames from ESO_original_spectra/ directory to a dictionary
         self.eso_spectra_files = {}
@@ -264,10 +267,11 @@ class SEDModels:
             template_dir = os.path.join(base_dir, 'ESO_original_spectra')
             return os.path.join(template_dir, filename)
         
-    @staticmethod
-    def template(filename, waveunit='AA', unitsf='Fll'):
+    @classmethod
+    def template(cls, filename, waveunit='AA', unitsf='Fll'):
         """
         Reads a two-column file, skipping lines that start with '#' or '!'.
+        Uses a class-level cache to avoid re-reading files from disk.
         
         Parameters:
         - filename: path to the template file
@@ -279,16 +283,24 @@ class SEDModels:
         - wave: wavelength array [Å]
         - flux: flux array
         """
-
         filepath = SEDModels._resolve_template_path(filename)
-
-        with open(filepath, 'r', encoding='latin-1') as f:
-            lines = f.readlines()
-    
-        # Filter lines not starting with "#" or "!"
-        data = np.loadtxt([line for line in lines if not line.strip().startswith(('#', '!'))])
-        wave = data[:, 0]
-        flux = data[:, 1]
+        
+        # Check cache first
+        if filepath not in cls._template_cache:
+            with open(filepath, 'r', encoding='latin-1') as f:
+                lines = f.readlines()
+        
+            # Filter lines not starting with "#" or "!"
+            data = np.loadtxt([line for line in lines if not line.strip().startswith(('#', '!'))])
+            # Store in cache (wave and flux as copies to avoid mutation)
+            cls._template_cache[filepath] = (data[:, 0].copy(), data[:, 1].copy())
+        
+        # Get from cache
+        wave, flux = cls._template_cache[filepath]
+        # Return copies to avoid mutation of cached data
+        wave = wave.copy()
+        flux = flux.copy()
+        
         tem = os.path.basename(filename).split('.')[0]
             
         if waveunit == 'nm':
