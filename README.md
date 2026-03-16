@@ -79,7 +79,7 @@ con, ob, spe, im, spe_input = wst.build_obs_full(full_obs)
 # for SNR:
 res_snr = wst.snr_from_source(con, im, spe, debug=True/False)
 
-# for SNR at a specific wavelength
+# for SNR at a specific wavelength:
 res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True/False)
 
 # for time/exposures/best combination
