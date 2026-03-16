@@ -77,11 +77,15 @@ con, ob, spe, im, spe_input = wst.build_obs_full(full_obs)
 # Compute time or snr given the full dictionary results
 
 # for SNR:
-res_snr = wst.snr_from_source(con, im, spe)
+res_snr = wst.snr_from_source(con, im, spe, debug=True/False)
+
+# for SNR at a specific wavelength
+res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True/False)
 
 # for time/exposures/best combination
-res_time = wst.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best')
+res_time = wst.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
 ```
+`debug=True/False` allows to print detailed info of the current run.
 
 **NOTE**: *`time_from_source()` basically update the 'dit', 'ndit' or both values in the obs. dictionary to the value/values needed to reach a specific SNR at a specific wavelength, after it you could run a `res_snr = wst.snr_from_source(con, im, spe)` and plot the SNR to check the results.*
 
