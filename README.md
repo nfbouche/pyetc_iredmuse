@@ -136,9 +136,11 @@ full_obs = {
     
     "COADD_WL": 10,
     
-    "COADD_XY": 1
+    "COADD_XY": 1 or 'best'
 }
 ```
+**NOTE**: *"COADD_XY": 'best' select the spatial coadding that maximizes the SNR, as for the options of the `time_from_source` methods it automatically updates the "COADD_XY" in the `ob` dictionary*
+
 After the computation results can be plotted easily accessing the mpdaf `Spectrum` objects in the results dictionary like this:
 ```python
 res_snr['spec']['snr'].plot()
