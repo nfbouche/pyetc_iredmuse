@@ -143,6 +143,8 @@ After the computation results can be plotted easily accessing the mpdaf `Spectru
 ```python
 res_snr['spec']['snr'].plot()
 ```
+![Noise Plot](images/SNR.png)
+
 or
 ```python
 res_snr['spec']['nph_source'].plot()
@@ -169,22 +171,11 @@ Lastly, there is a handy function to plot all the noise components together, and
 ```python
 plot_noise_components(res_snr['spec']['noise'])
 ```
-
-## Usage Examples
-
-update in future version
+![Noise Plot](images/noise.png)
 
 ## Documentation
 
 update in future version
-
-## Contributing
-
-update in future version
-
-## License
-
-MIT License
 
 ## Citation
 
