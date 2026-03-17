@@ -111,8 +111,9 @@ full_obs = {
     
     "Obj_SED": 'template',
     "SED_Name": 'MARCS_8000K_lg+45',
+    "UPLOAD_FILE": "path/to/spec.txt"
     
-    "OBJ_MAG": 15,
+    "OBJ_MAG": 15, #or None for loaded spectrum
     "MAG_SYS": 'Vega',
     "MAG_FIL": 'V',
     
@@ -140,6 +141,8 @@ full_obs = {
 }
 ```
 **NOTE**: *"COADD_XY": 'best' — automatically selects the spatial coadding that maximizes the SNR. Like the compute options in `time_from_source`, it updates "COADD_XY" in the obs dictionary with the chosen value.*
+
+**NOTE (2)**: *When using `"Obj_SED": "upload"`, you must provide `"UPLOAD_FILE": "/path/to/spectrum.dat"` pointing to a two-column ASCII file (wavelength, flux). Optional comment headers set units: `# nm` or `# aa` for wavelength (default: Å - `aa`), `# fl` or `# ph` for flux (default: erg/cm²/s/Å - `fl`). Set `"OBJ_MAG": null` to use the spectrum as-is, or set a numeric value (e.g. `18`) to normalize it to that magnitude in the chosen `MAG_FIL`/`MAG_SYS` band.*
 
 After the computation results can be plotted easily accessing the mpdaf `Spectrum` objects in the results dictionary like this:
 ```python
