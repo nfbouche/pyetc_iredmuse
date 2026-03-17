@@ -1073,7 +1073,7 @@ sed_models = SEDModels()
 for k in sorted(sed_models.eso_spectra_files.keys()):
     print(k)
 
-"OBJ_MAG" (float/int) - MAGNITUDE VALUE
+"OBJ_MAG" (float/int or None) - MAGNITUDE VALUE, None possible only with "Obj_SED": 'upload', which will use the absolute units of the loaded file
 
 "MAG_SYS" (str) 'Vega' or 'AB'
 
