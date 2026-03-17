@@ -162,13 +162,13 @@ class ETC:
         conf = insfam[fo["CH"]]
 
         # first check on value of the SED type
-        if fo['Obj_SED'] not in ('template', 'pl', 'bb', 'line', 'uniform'):
-            raise ValueError(f"Invalid SED type: {fo['Obj_SED']} \n Allowed values are 'template', 'pl', 'bb', 'line', 'uniform'")
+        if fo['Obj_SED'] not in ('template', 'pl', 'bb', 'line', 'uniform', 'upload'):
+            raise ValueError(f"Invalid SED type: {fo['Obj_SED']} \n Allowed values are 'template', 'pl', 'bb', 'line', 'uniform', 'upload'")
         
         # Determine spectral type
         if fo['Obj_SED'] == 'line':
             dummy_type = 'line'
-        elif fo['Obj_SED'] in ('template', 'pl', 'bb', 'uniform'):
+        elif fo['Obj_SED'] in ('template', 'pl', 'bb', 'uniform', 'upload'):
             dummy_type = 'cont'
 
         # check coadding for IFS, should be odd integer, now also the even are allowed
@@ -224,8 +224,22 @@ class ETC:
             ima_beta=fo.get("IMA_BETA", None),
 
             sersic_reff=fo.get("Sersic_Reff", None),
-            sersic_ind=fo.get("Sersic_Ind", None)
+            sersic_ind=fo.get("Sersic_Ind", None),
+
+            upload_wave=None,
+            upload_flux=None
         )
+
+        # Read spectrum from file if upload SED type
+        if fo['Obj_SED'] == 'upload':
+            fpath = fo.get('UPLOAD_FILE', None)
+            if fpath is None:
+                raise ValueError("Upload SED type requires 'UPLOAD_FILE' (path to spectrum file).")
+            if not os.path.isfile(fpath):
+                raise ValueError(f"Spectrum file not found: {fpath}")
+            with open(fpath, 'r') as f:
+                content = f.read()
+            obs['upload_wave'], obs['upload_flux'] = sed_models.parse_uploaded_spectrum(content)
 
         self.set_obs(obs)
 
@@ -480,6 +494,23 @@ class ETC:
                 tot_flux = obs['wave_line_flux']
                 flux = sed_models.gaussian_line(def_wave, center, tot_flux, fwhm)
                 K = 1
+
+            elif obs['spec_specific'] == 'upload':
+                def_wave = obs['upload_wave']
+                flux = obs['upload_flux']
+                if def_wave is None or flux is None:
+                    raise ValueError("Upload SED type requires 'UPLOAD_FILE' (path to spectrum file).")
+                def_wave = np.asarray(def_wave, dtype=float)
+                flux = np.asarray(flux, dtype=float)
+                # Normalize to magnitude if mag is provided, otherwise use as-is
+                if obs['mag'] is not None:
+                    band = obs['band']
+                    mag = obs['mag']
+                    syst = obs['syst']
+                    mag, syst = phot_system.auto_conversion(mag, band, syst)
+                    _, _, K = filter_manager.apply_filter(def_wave, flux, band, mag, syst)
+                else:
+                    K = 1
                 
             # Put wave and flux*K in a MPDAF object
             spec_raw = Spectrum(data=flux*K, wave=WaveCoord(cdelt=def_wave[1]-def_wave[0], 
@@ -492,7 +523,8 @@ class ETC:
             # # # fastest resampling 
             npts = conf['instrans'].shape[0]
             target_wave = np.linspace(l1, l1 + (npts - 1) * lstep, npts)
-            resampled_flux = np.interp(target_wave, def_wave, flux * K)
+            resampled_flux = np.interp(target_wave, def_wave, flux * K,
+                                       left=0.0, right=0.0)
             spec_cut = Spectrum(data=resampled_flux, wave=WaveCoord(cdelt=lstep, crval=l1))
             
             return spec_raw, spec_cut
@@ -2721,7 +2753,13 @@ def simulate_counts(npix, source=None, sky=None, dark=None, RON=None, seed=None)
     mean_signal = source + sky + dark
 
     # Photon and dark noise (Poisson distributed)
-    poisson_counts = rng.poisson(mean_signal, size=npix)
+    # For very large lambda, use Gaussian approximation (Poisson -> Normal)
+    POISSON_LIMIT = 1e15
+    if np.any(np.asarray(mean_signal) > POISSON_LIMIT):
+        poisson_counts = rng.normal(mean_signal, np.sqrt(np.maximum(mean_signal, 0)), size=npix)
+        poisson_counts = np.maximum(poisson_counts, 0)
+    else:
+        poisson_counts = rng.poisson(mean_signal, size=npix)
 
     # Add read-out noise (Gaussian distributed)
     noisy_counts = poisson_counts + rng.normal(0, RON, size=npix)
@@ -2738,7 +2776,13 @@ def simulate_counts_vectorized(npix, source_arr, sky_arr, dark, RON, seed=None):
     n_wave = len(source_arr)
     mean_signal = source_arr + sky_arr + dark
     mean_2d = np.broadcast_to(mean_signal[:, np.newaxis], (n_wave, npix))
-    poisson_counts = rng.poisson(mean_2d)
+    # For very large lambda, use Gaussian approximation (Poisson -> Normal)
+    POISSON_LIMIT = 1e15
+    if np.any(mean_signal > POISSON_LIMIT):
+        poisson_counts = rng.normal(mean_2d, np.sqrt(np.maximum(mean_2d, 0)))
+        poisson_counts = np.maximum(poisson_counts, 0)
+    else:
+        poisson_counts = rng.poisson(mean_2d)
     ron_noise = rng.normal(0, RON, size=(n_wave, npix))
     noisy_counts = poisson_counts + ron_noise
     total_counts = noisy_counts.sum(axis=1)

@@ -1,4 +1,5 @@
 import os
+import io
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import constants, integrate
@@ -309,6 +310,90 @@ class SEDModels:
         if unitsf == 'PHll':
             flux = 1.98644746e-08 * (flux / wave)
         return tem, wave, flux
+
+    @staticmethod
+    def parse_uploaded_spectrum(file_content, waveunit=None, fluxunit=None):
+        """Parse an uploaded spectrum from text content.
+
+        The file must contain two columns: wavelength and flux.
+        Lines starting with '#' or '!' are treated as comments.
+        Special single-keyword comment lines set units:
+          # nm  or  # aa   -> wavelength unit (default: aa = Angstrom)
+          # fl  or  # ph   -> flux unit (default: fl = erg/cm^2/s/AA)
+
+        Parameters
+        ----------
+        file_content : str or bytes
+            Text content of the spectrum file.
+        waveunit : str or None
+            Override wavelength unit ('nm' or 'aa'). If None, read from header.
+        fluxunit : str or None
+            Override flux unit ('fl' or 'ph'). If None, read from header.
+
+        Returns
+        -------
+        wave : ndarray
+            Wavelength array in Angstrom.
+        flux : ndarray
+            Flux array in erg/cm^2/s/AA.
+        """
+        if isinstance(file_content, bytes):
+            file_content = file_content.decode('utf-8', errors='replace')
+
+        lines = file_content.splitlines()
+
+        detected_waveunit = 'aa'
+        detected_fluxunit = 'fl'
+        data_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith('#') or stripped.startswith('!'):
+                token = stripped.lstrip('#!').strip().lower()
+                if token == 'nm':
+                    detected_waveunit = 'nm'
+                elif token == 'aa':
+                    detected_waveunit = 'aa'
+                elif token == 'ph':
+                    detected_fluxunit = 'ph'
+                elif token == 'fl':
+                    detected_fluxunit = 'fl'
+                continue
+            data_lines.append(stripped)
+
+        if not data_lines:
+            raise ValueError("Spectrum file contains no data lines.")
+
+        data = np.loadtxt(io.StringIO('\n'.join(data_lines)))
+        if data.ndim != 2 or data.shape[1] < 2:
+            raise ValueError("Spectrum file must contain at least two columns (wavelength, flux).")
+
+        wave = data[:, 0].copy()
+        flux = data[:, 1].copy()
+
+        # Sort by wavelength
+        order = np.argsort(wave)
+        wave = wave[order]
+        flux = flux[order]
+
+        # Apply unit overrides
+        wu = waveunit if waveunit is not None else detected_waveunit
+        fu = fluxunit if fluxunit is not None else detected_fluxunit
+
+        # Convert wavelength to Angstrom
+        if wu == 'nm':
+            wave *= 10.0
+
+        # Convert photon flux to energy flux: F_lambda = N_ph * E_ph / AA
+        if fu == 'ph':
+            h_cgs = 6.62607015e-27   # erg s
+            c_cgs = 2.99792458e18    # AA/s
+            E_photon = h_cgs * c_cgs / wave  # erg per photon
+            flux = flux * E_photon
+
+        return wave, flux
 
 class FilterManager:
     """
