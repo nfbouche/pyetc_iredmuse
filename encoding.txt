@@ -44,6 +44,10 @@ with SKYCALC=True float/int (will be rounded to the nearest number to [0.05, 0.1
 - "bb" - BLACKBODY
 - "line"
 - "uniform" - constant with wave
+- "upload" - user defined spectrum, this one requires "UPLOAD_FILE"
+
+"UPLOAD_FILE" (used only with "Obj_SED" is "upload"), absolute path to the file:
+path/to/spec.txt (or spec.dat)
 
 "SED_Name" (used only with "Obj_SED" is "template"), possible values:
 Galev_E
