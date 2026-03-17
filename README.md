@@ -113,7 +113,7 @@ full_obs = {
     "SED_Name": 'MARCS_8000K_lg+45',
     "UPLOAD_FILE": "path/to/spec.txt"
     
-    "OBJ_MAG": 15, #or None for loaded spectrum
+    "OBJ_MAG": 15, #can be None for loaded spectrum
     "MAG_SYS": 'Vega',
     "MAG_FIL": 'V',
     
