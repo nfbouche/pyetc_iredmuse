@@ -313,22 +313,28 @@ class SEDModels:
 
     @staticmethod
     def parse_uploaded_spectrum(file_content, waveunit=None, fluxunit=None):
-        """Parse an uploaded spectrum from text content.
+        """Parse an uploaded spectrum from text or FITS content.
 
-        The file must contain two columns: wavelength and flux.
-        Lines starting with '#' or '!' are treated as comments.
-        Special single-keyword comment lines set units:
-          # nm  or  # aa   -> wavelength unit (default: aa = Angstrom)
-          # fl  or  # ph   -> flux unit (default: fl = erg/cm^2/s/AA)
+        For text files:
+          The file must contain two columns: wavelength and flux.
+          Lines starting with '#' or '!' are treated as comments.
+          Special single-keyword comment lines set units:
+            # nm  or  # aa   -> wavelength unit (default: aa = Angstrom)
+            # fl  or  # ph   -> flux unit (default: fl = erg/cm^2/s/AA)
+
+        For FITS files:
+          Reads the first extension (BINTABLE) or primary HDU.
+          Expects at least two columns; the first is wavelength, the second is flux.
+          Wavelength is assumed in Angstrom unless a column unit indicates nm.
 
         Parameters
         ----------
-        file_content : str or bytes
-            Text content of the spectrum file.
+        file_content : str, bytes, or path-like
+            Text content, raw bytes (for FITS), or file path of the spectrum file.
         waveunit : str or None
-            Override wavelength unit ('nm' or 'aa'). If None, read from header.
+            Override wavelength unit ('nm' or 'aa'). If None, auto-detect.
         fluxunit : str or None
-            Override flux unit ('fl' or 'ph'). If None, read from header.
+            Override flux unit ('fl' or 'ph'). If None, auto-detect.
 
         Returns
         -------
@@ -337,6 +343,23 @@ class SEDModels:
         flux : ndarray
             Flux array in erg/cm^2/s/AA.
         """
+        # --- Detect FITS content ---
+        raw_bytes = None
+        if isinstance(file_content, bytes):
+            raw_bytes = file_content
+        elif isinstance(file_content, str) and not file_content.startswith('SIMPLE'):
+            # Could be a file path or text content
+            if os.path.isfile(file_content) and file_content.lower().endswith(('.fits', '.fit')):
+                with open(file_content, 'rb') as f:
+                    raw_bytes = f.read()
+
+        # Check for FITS magic bytes
+        is_fits = raw_bytes is not None and raw_bytes[:6] == b'SIMPLE'
+
+        if is_fits:
+            return SEDModels._parse_fits_spectrum(raw_bytes, waveunit=waveunit, fluxunit=fluxunit)
+
+        # --- Text parsing (original logic) ---
         if isinstance(file_content, bytes):
             file_content = file_content.decode('utf-8', errors='replace')
 
@@ -394,6 +417,119 @@ class SEDModels:
             flux = flux * E_photon
 
         return wave, flux
+
+    @staticmethod
+    def _parse_fits_spectrum(fits_bytes, waveunit=None, fluxunit=None):
+        """Parse a FITS spectrum from raw bytes.
+
+        Supports BINTABLE extensions (as produced by the ETC download) and
+        simple IMAGE HDUs with a WCS wavelength axis.
+
+        Parameters
+        ----------
+        fits_bytes : bytes
+            Raw FITS file content.
+        waveunit : str or None
+            Override wavelength unit ('nm' or 'aa').
+        fluxunit : str or None
+            Override flux unit ('fl' or 'ph').
+
+        Returns
+        -------
+        wave : ndarray  [Angstrom]
+        flux : ndarray  [erg/cm^2/s/AA]
+        """
+        from astropy.io import fits as pyfits
+        from astropy.table import Table as AstropyTable
+
+        hdulist = pyfits.open(io.BytesIO(fits_bytes))
+
+        wave = None
+        flux = None
+
+        # Try BINTABLE extensions first
+        for hdu in hdulist[1:]:
+            if isinstance(hdu, (pyfits.BinTableHDU, pyfits.TableHDU)):
+                tbl = AstropyTable.read(hdulist, hdu=hdulist.index_of(hdu))
+                colnames = [c.lower() for c in tbl.colnames]
+                if len(tbl.colnames) < 2:
+                    continue
+                # Identify wavelength column
+                wave_col = None
+                for candidate in ('wave', 'wavelength', 'lambda', 'lam', 'wav'):
+                    for i, cn in enumerate(colnames):
+                        if candidate in cn:
+                            wave_col = tbl.colnames[i]
+                            break
+                    if wave_col:
+                        break
+                if wave_col is None:
+                    wave_col = tbl.colnames[0]
+
+                # Identify flux column
+                flux_col = None
+                for candidate in ('flux', 'flam', 'f_lambda', 'fll', 'counts', 'data'):
+                    for i, cn in enumerate(colnames):
+                        if candidate in cn:
+                            flux_col = tbl.colnames[i]
+                            break
+                    if flux_col:
+                        break
+                if flux_col is None:
+                    flux_col = tbl.colnames[1]
+
+                wave = np.asarray(tbl[wave_col], dtype=float)
+                flux = np.asarray(tbl[flux_col], dtype=float)
+
+                # Check units from column metadata
+                if waveunit is None:
+                    wcol_obj = tbl[wave_col]
+                    unit_str = ''
+                    if hasattr(wcol_obj, 'unit') and wcol_obj.unit is not None:
+                        unit_str = str(wcol_obj.unit).lower()
+                    if 'nm' in unit_str or 'nanometer' in unit_str:
+                        waveunit = 'nm'
+                break
+
+        # Fallback: IMAGE HDU with WCS
+        if wave is None:
+            primary = hdulist[0]
+            if primary.data is not None and primary.data.ndim == 1:
+                flux = np.asarray(primary.data, dtype=float)
+                hdr = primary.header
+                crval = hdr.get('CRVAL1', 1)
+                cdelt = hdr.get('CDELT1', hdr.get('CD1_1', 1))
+                crpix = hdr.get('CRPIX1', 1)
+                n = len(flux)
+                wave = crval + (np.arange(n) - (crpix - 1)) * cdelt
+                if waveunit is None:
+                    cunit = str(hdr.get('CUNIT1', 'Angstrom')).lower()
+                    if 'nm' in cunit or 'nanometer' in cunit:
+                        waveunit = 'nm'
+
+        hdulist.close()
+
+        if wave is None or flux is None:
+            raise ValueError("Could not find wavelength/flux data in the FITS file. "
+                             "Expected a BINTABLE with at least 2 columns or a 1D IMAGE HDU.")
+
+        # Sort by wavelength
+        order = np.argsort(wave)
+        wave = wave[order]
+        flux = flux[order]
+
+        # Convert units
+        if waveunit == 'nm':
+            wave *= 10.0
+
+        if fluxunit == 'ph':
+            h_cgs = 6.62607015e-27
+            c_cgs = 2.99792458e18
+            E_photon = h_cgs * c_cgs / wave
+            flux = flux * E_photon
+
+        return wave, flux
+
 
 class FilterManager:
     """

@@ -237,8 +237,12 @@ class ETC:
                 raise ValueError("Upload SED type requires 'UPLOAD_FILE' (path to spectrum file).")
             if not os.path.isfile(fpath):
                 raise ValueError(f"Spectrum file not found: {fpath}")
-            with open(fpath, 'r') as f:
-                content = f.read()
+            if fpath.lower().endswith(('.fits', '.fit')):
+                with open(fpath, 'rb') as f:
+                    content = f.read()
+            else:
+                with open(fpath, 'r') as f:
+                    content = f.read()
             obs['upload_wave'], obs['upload_flux'] = sed_models.parse_uploaded_spectrum(content)
 
         self.set_obs(obs)
