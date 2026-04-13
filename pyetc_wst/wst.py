@@ -73,7 +73,7 @@ class WST(ETC):
                                lbda1 = 6200, # starting wavelength in Angstroem
                                lbda2 = 9800, # end wavelength in Angstroem
                                lsfpix = 2.5, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                               ron = 1.0 * 2**(0.25), # readout noise (e-) # squared sum for the 2x1 binning
+                               ron = 1.0 * np.sqrt(2), # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 1.0 * 2, # dark current (e-/pixel/h) # sum for the 2x1 binning   
                                )
         if not skip_dataload:
