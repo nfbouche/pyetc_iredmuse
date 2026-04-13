@@ -5,7 +5,7 @@ A Python package for exposure time calculation and signal-to-noise ratio estimat
 for the WST instrument suite (IFS, MOS-LR, MOS-HR).
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0"
 __author__ = "Matteo Ferro & Roland Bacon"
 
 # Import main classes and functions
@@ -19,7 +19,7 @@ from .etc import (
     compute_sky,
     mask_spectrum_edges,
     mask_line_region,
-    mask_spectra_in_dict,
+    mask_spectra_in_dict,   
     convolve_and_center,
     plot_noise_components,
 )
