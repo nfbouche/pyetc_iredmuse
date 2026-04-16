@@ -1418,7 +1418,7 @@ class ETC:
         dl = spec.wave.get_step(unit='Angstrom')
         a = (wave*1.e-8/(H_cgs*C_cgs)) * (tel_eff_area*1.e4) * (ins_atm.data)
         Kt =  ins_ins.data * a
-        Ksky = ins_ins.data * (np.pi * ins['aperture'] / 2)**2 * tel_eff_area * (dl/1e4)
+        Ksky = ins_ins.data * np.pi * (ins['aperture'] / 2)**2 * tel_eff_area * (dl/1e4)
 
         sky_ph_aperture = ins_sky * Ksky * obs['dit'] * obs['ndit']
 
@@ -1431,7 +1431,7 @@ class ETC:
         factor_source = spec * flux * Kt * obs['dit'] * obs['ndit']
         
         if obs['ima_type'] == 'sb':
-            source_ph_aperture = factor_source * (np.pi * ins['aperture'] / 2)**2
+            source_ph_aperture = factor_source * np.pi * (ins['aperture'] / 2)**2
         
         elif obs['ima_type'] in ['ps', 'resolved']:
             psf_array = self.get_image_psf(ins, selected_wave)
@@ -1748,7 +1748,7 @@ class ETC:
         num_trace = 1 if ins['name'] == 'moslr' else 7
         trace_pixel_width = int(np.ceil(ins['lsfpix']))
         
-        Ksky = ins_at_wave * (np.pi * ins['aperture'] / 2)**2 * tel_eff_area * (dl / 1e4)
+        Ksky = ins_at_wave * np.pi * (ins['aperture'] / 2)**2 * tel_eff_area * (dl / 1e4)
         
         sky_ph_aperture = sky_at_wave * Ksky * obs['dit'] * obs['ndit']
         dark = ins['dcurrent'] * obs['dit'] * obs['ndit'] / 3600 * num_trace * trace_pixel_width
@@ -1757,7 +1757,7 @@ class ETC:
         factor_source = spec_at_wave * flux * Kt * obs['dit'] * obs['ndit']
         
         if obs['ima_type'] == 'sb':
-            source_ph_aperture = factor_source * (np.pi * ins['aperture'] / 2)**2
+            source_ph_aperture = factor_source * np.pi * (ins['aperture'] / 2)**2
             
         elif obs['ima_type'] in ['ps', 'resolved']:
             psf_ima = self.get_image_psf(ins, wave_target)
@@ -2146,7 +2146,7 @@ class ETC:
         dl = spec.wave.get_step(unit='Angstrom')
         a = (wave*1.e-8/(H_cgs*C_cgs)) * (tel_eff_area*1.e4) * (ins_atm.data)
         Kt =  ins_ins.data * a
-        Ksky = ins_ins.data * (np.pi * ins['aperture'] / 2)**2 * tel_eff_area * (dl/1e4)
+        Ksky = ins_ins.data * np.pi * (ins['aperture'] / 2)**2 * tel_eff_area * (dl/1e4)
 
         sky_ph_aperture = ins_sky * Ksky
 
@@ -2168,7 +2168,7 @@ class ETC:
         factor_source = spec * flux * Kt
         
         if obs['ima_type'] == 'sb':
-            source_ph_aperture = factor_source * (np.pi * ins['aperture'] / 2)**2
+            source_ph_aperture = factor_source * np.pi * (ins['aperture'] / 2)**2
         
         elif obs['ima_type'] in ['ps', 'resolved']:
             # Compute PSF only at snr_wave (1 wavelength instead of wave_grid)
