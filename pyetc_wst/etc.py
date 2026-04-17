@@ -2188,158 +2188,158 @@ class ETC:
             # Apply fiber fraction to full spectrum (use snr_wave fraction for all)
             source_ph_aperture = factor_source * frac_fiber_snr
 
+        snrv = obs['snr']
+
+        if compute == 'dit': 
+            _checkobs(self.obs, keys=['ndit', 'snr', 'snr_wave'])
+            nditv = obs['ndit']
+
+            if obs['spbin'] == 1:
+                if debug:
+                    self.logger.debug(f"Computing DIT without spectral rebinning")
+                # nearest wave idx to snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                wave_snr = wave[snr_idx]
+
+                sv = source_ph_aperture.data[snr_idx]
+                skyv = sky_ph_aperture.data[snr_idx]
+                darkv = dark_tot.data[snr_idx]
+                ronv = ron_tot.data[snr_idx]
+
+            elif obs['spbin'] > 1:
+                if debug:
+                    self.logger.debug(f"Computing DIT with spectral rebinning, factor of {obs['spbin']}")
+                # Find the bin containing snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                bin_start = (snr_idx // obs['spbin']) * obs['spbin']
+                bin_end = min(bin_start + obs['spbin'], len(wave))
+                
+                # Sum directly over the bin
+                sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
+                skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
+                darkv = np.sum(dark_tot.data[bin_start:bin_end])
+                ronv = np.sum(ron_tot.data[bin_start:bin_end])
+                
+                wave_snr = np.mean(wave[bin_start:bin_end])
+
+            # we solve numerically for the DIT
+            A = - (sv**2 * nditv) / (snrv**2)
+            B = sv + skyv + darkv
+            C = ronv
+
+            roots = np.roots([A, B, C])
+            ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
+
+            if debug:
+                self.logger.debug(f"Computed DIT: {ditv} seconds for NDIT: {nditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
+                self.logger.debug(f"Overriding DIT in the observation dictionary...")
+            res['dit'] = ditv
+            obs['dit'] = ditv
+
+        elif compute == 'ndit':
+            _checkobs(self.obs, keys=['dit', 'snr', 'snr_wave'])
+            ditv = obs['dit']
+             
+            if obs['spbin'] == 1:
+                if debug:
+                    self.logger.debug(f"Computing NDIT without spectral rebinning")
+                # nearest wave idx to snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                wave_snr = wave[snr_idx]
+
+                sv = source_ph_aperture.data[snr_idx]
+                skyv = sky_ph_aperture.data[snr_idx]
+                darkv = dark_tot.data[snr_idx]
+                ronv = ron_tot.data[snr_idx] 
+            
+            elif obs['spbin'] > 1:
+                if debug:
+                    self.logger.debug(f"Computing NDIT with spectral rebinning, factor of {obs['spbin']}")
+                # Find the bin containing snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                bin_start = (snr_idx // obs['spbin']) * obs['spbin']
+                bin_end = min(bin_start + obs['spbin'], len(wave))
+                
+                # Sum directly over the bin
+                sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
+                skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
+                darkv = np.sum(dark_tot.data[bin_start:bin_end])
+                ronv = np.sum(ron_tot.data[bin_start:bin_end])
+                
+                wave_snr = np.mean(wave[bin_start:bin_end])
+
+            nditv = snrv**2 * (sv + skyv + darkv + ronv / ditv) / (sv**2 * ditv)
+
+            if debug:
+                self.logger.debug(f"Computed NDIT: {nditv} exposures for DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
+                self.logger.debug(f"Overriding NDIT in the observation dictionary...")
+            res['ndit'] = nditv
+            obs['ndit'] = nditv
+        
+        elif compute == 'best':
+            _checkobs(self.obs, keys=['snr', 'snr_wave'])
             snrv = obs['snr']
 
-            if compute == 'dit': 
-                _checkobs(self.obs, keys=['ndit', 'snr', 'snr_wave'])
-                nditv = obs['ndit']
-
-                if obs['spbin'] == 1:
-                    if debug:
-                        self.logger.debug(f"Computing DIT without spectral rebinning")
-                    # nearest wave idx to snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    wave_snr = wave[snr_idx]
-
-                    sv = source_ph_aperture.data[snr_idx]
-                    skyv = sky_ph_aperture.data[snr_idx]
-                    darkv = dark_tot.data[snr_idx]
-                    ronv = ron_tot.data[snr_idx]
-
-                elif obs['spbin'] > 1:
-                    if debug:
-                        self.logger.debug(f"Computing DIT with spectral rebinning, factor of {obs['spbin']}")
-                    # Find the bin containing snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    bin_start = (snr_idx // obs['spbin']) * obs['spbin']
-                    bin_end = min(bin_start + obs['spbin'], len(wave))
-                    
-                    # Sum directly over the bin
-                    sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
-                    skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
-                    darkv = np.sum(dark_tot.data[bin_start:bin_end])
-                    ronv = np.sum(ron_tot.data[bin_start:bin_end])
-                    
-                    wave_snr = np.mean(wave[bin_start:bin_end])
-
-                # we solve numerically for the DIT
-                A = - (sv**2 * nditv) / (snrv**2)
-                B = sv + skyv + darkv
-                C = ronv
-
-                roots = np.roots([A, B, C])
-                ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
-
+            if obs['spbin'] == 1:
                 if debug:
-                    self.logger.debug(f"Computed DIT: {ditv} seconds for NDIT: {nditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
-                    self.logger.debug(f"Overriding DIT in the observation dictionary...")
-                res['dit'] = ditv
-                obs['dit'] = ditv
+                    self.logger.debug(f"Computing best DITxNDIT combination without spectral rebinning")
+                # nearest wave idx to snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                wave_snr = wave[snr_idx]
 
-            elif compute == 'ndit':
-                _checkobs(self.obs, keys=['dit', 'snr', 'snr_wave'])
-                ditv = obs['dit']
-                 
-                if obs['spbin'] == 1:
-                    if debug:
-                        self.logger.debug(f"Computing NDIT without spectral rebinning")
-                    # nearest wave idx to snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    wave_snr = wave[snr_idx]
-
-                    sv = source_ph_aperture.data[snr_idx]
-                    skyv = sky_ph_aperture.data[snr_idx]
-                    darkv = dark_tot.data[snr_idx]
-                    ronv = ron_tot.data[snr_idx] 
-                
-                elif obs['spbin'] > 1:
-                    if debug:
-                        self.logger.debug(f"Computing NDIT with spectral rebinning, factor of {obs['spbin']}")
-                    # Find the bin containing snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    bin_start = (snr_idx // obs['spbin']) * obs['spbin']
-                    bin_end = min(bin_start + obs['spbin'], len(wave))
-                    
-                    # Sum directly over the bin
-                    sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
-                    skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
-                    darkv = np.sum(dark_tot.data[bin_start:bin_end])
-                    ronv = np.sum(ron_tot.data[bin_start:bin_end])
-                    
-                    wave_snr = np.mean(wave[bin_start:bin_end])
-
-                nditv = snrv**2 * (sv + skyv + darkv + ronv / ditv) / (sv**2 * ditv)
-
-                if debug:
-                    self.logger.debug(f"Computed NDIT: {nditv} exposures for DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
-                    self.logger.debug(f"Overriding NDIT in the observation dictionary...")
-                res['ndit'] = nditv
-                obs['ndit'] = nditv
+                sv = source_ph_aperture.data[snr_idx]
+                skyv = sky_ph_aperture.data[snr_idx]
+                darkv = dark_tot.data[snr_idx]
+                ronv = ron_tot.data[snr_idx] 
             
-            elif compute == 'best':
-                _checkobs(self.obs, keys=['snr', 'snr_wave'])
-                snrv = obs['snr']
-
-                if obs['spbin'] == 1:
-                    if debug:
-                        self.logger.debug(f"Computing best DITxNDIT combination without spectral rebinning")
-                    # nearest wave idx to snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    wave_snr = wave[snr_idx]
-
-                    sv = source_ph_aperture.data[snr_idx]
-                    skyv = sky_ph_aperture.data[snr_idx]
-                    darkv = dark_tot.data[snr_idx]
-                    ronv = ron_tot.data[snr_idx] 
-                
-                elif obs['spbin'] > 1:
-                    if debug:
-                        self.logger.debug(f"Computing best DITxNDIT combination with spectral rebinning, factor of {obs['spbin']}")
-                    # Find the bin containing snr_wave
-                    snr_idx = np.abs(wave - obs['snr_wave']).argmin()
-                    bin_start = (snr_idx // obs['spbin']) * obs['spbin']
-                    bin_end = min(bin_start + obs['spbin'], len(wave))
-                    
-                    # Sum directly over the bin
-                    sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
-                    skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
-                    darkv = np.sum(dark_tot.data[bin_start:bin_end])
-                    ronv = np.sum(ron_tot.data[bin_start:bin_end])
-                    
-                    wave_snr = np.mean(wave[bin_start:bin_end])
-                    
-                # we compute the maximum DIT to avoid saturation
-                counts = (source_ph_aperture.data + sky_ph_aperture.data) / (num_trace * trace_pixel_width)
-                dit_sat = threshold_sat / max(counts)
-
-                # now we compute the NDIT to achieve the target SNR with this DIT
-                ndit_raw = snrv**2 * (sv + skyv + darkv + ronv / dit_sat) / (sv**2 * dit_sat)
-
-                # we approximate NDIT to the next integer
-                nditv = max(1, int(np.ceil(ndit_raw)))
-                
+            elif obs['spbin'] > 1:
                 if debug:
-                    self.logger.debug(f"Maximum DIT to avoid saturation: {dit_sat} seconds")
-                    self.logger.debug(f"Computed NDIT: {ndit_raw}, rounded to the next integer: {nditv}")
-
-                # we solve numerically for the DIT
-                A = - (sv**2 * nditv) / (snrv**2)
-                B = sv + skyv + darkv
-                C = ronv
-
-                roots = np.roots([A, B, C])
-                ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
-
-                if debug:
-                    self.logger.debug(f"Final NDIT: {nditv}  and exposures for DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
-                    self.logger.debug(f"Overriding NDIT in the observation dictionary...")
-                    self.logger.debug(f"Overriding DIT in the observation dictionary...")
+                    self.logger.debug(f"Computing best DITxNDIT combination with spectral rebinning, factor of {obs['spbin']}")
+                # Find the bin containing snr_wave
+                snr_idx = np.abs(wave - obs['snr_wave']).argmin()
+                bin_start = (snr_idx // obs['spbin']) * obs['spbin']
+                bin_end = min(bin_start + obs['spbin'], len(wave))
                 
-                res['ndit'] = nditv
-                obs['ndit'] = nditv
+                # Sum directly over the bin
+                sv = np.sum(source_ph_aperture.data[bin_start:bin_end])
+                skyv = np.sum(sky_ph_aperture.data[bin_start:bin_end])
+                darkv = np.sum(dark_tot.data[bin_start:bin_end])
+                ronv = np.sum(ron_tot.data[bin_start:bin_end])
+                
+                wave_snr = np.mean(wave[bin_start:bin_end])
+                
+            # we compute the maximum DIT to avoid saturation
+            counts = (source_ph_aperture.data + sky_ph_aperture.data) / (num_trace * trace_pixel_width)
+            dit_sat = threshold_sat / max(counts)
 
-                res['dit'] = ditv
-                obs['dit'] = ditv
+            # now we compute the NDIT to achieve the target SNR with this DIT
+            ndit_raw = snrv**2 * (sv + skyv + darkv + ronv / dit_sat) / (sv**2 * dit_sat)
+
+            # we approximate NDIT to the next integer
+            nditv = max(1, int(np.ceil(ndit_raw)))
+            
+            if debug:
+                self.logger.debug(f"Maximum DIT to avoid saturation: {dit_sat} seconds")
+                self.logger.debug(f"Computed NDIT: {ndit_raw}, rounded to the next integer: {nditv}")
+
+            # we solve numerically for the DIT
+            A = - (sv**2 * nditv) / (snrv**2)
+            B = sv + skyv + darkv
+            C = ronv
+
+            roots = np.roots([A, B, C])
+            ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
+
+            if debug:
+                self.logger.debug(f"Final NDIT: {nditv}  and exposures for DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
+                self.logger.debug(f"Overriding NDIT in the observation dictionary...")
+                self.logger.debug(f"Overriding DIT in the observation dictionary...")
+            
+            res['ndit'] = nditv
+            obs['ndit'] = nditv
+
+            res['dit'] = ditv
+            obs['dit'] = ditv
 
         res['input'] = dict(
             flux_source=spec, 
