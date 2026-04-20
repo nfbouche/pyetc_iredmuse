@@ -171,12 +171,17 @@ These sub-dictionaries include:
   - 'frac_dark' 
   - 'frac_ron'
 
-Lastly, there is a handy function to plot all the noise components together, and will accept `res_snr['spec']['noise']` (and also `res_snr['peak']['noise']`) for IFS): 
+Moreover, there is a handy function to plot all the noise components together, and will accept `res_snr['spec']['noise']` (and also `res_snr['peak']['noise']`) for IFS): 
 
 ```python
 plot_noise_components(res_snr['spec']['noise'])
 ```
 ![Noise Plot](images/noise.png)
+
+## Notebook
+Lastly a notebbok (`WST_LimMag.ipynb`) is given:
+it computes the point-source and surface-brightness limiting magnitudes of the WST IFS (blue & red channels) as a function of wavelength, for varying sky background conditions (dark/grey/bright), to reach a target S/N ratio.
+
 
 ## Documentation
 
