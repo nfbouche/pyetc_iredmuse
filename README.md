@@ -179,8 +179,8 @@ plot_noise_components(res_snr['spec']['noise'])
 ![Noise Plot](images/noise.png)
 
 ## Notebook
-Lastly a notebbok (`WST_LimMag.ipynb`) is given:
-it computes the point-source and surface-brightness limiting magnitudes of the WST IFS (blue & red channels) as a function of wavelength, for varying sky background conditions (dark/grey/bright), to reach a target S/N ratio.
+`WST_LimMag.ipynb`: computes the limiting magnitude of the WST Integral Field Spectrograph (IFS) as a function of wavelength, for both point sources and extended sources (surface brightness), across the blue and red channels.
+For a given target S/N ratio, the notebook sweeps the wavelength range and finds — via Brent's root-finding method — the faintest AB magnitude detectable under three sky background conditions: dark, grey, and bright time.
 
 
 ## Documentation
