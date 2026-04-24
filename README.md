@@ -206,6 +206,8 @@ update in future version
 - Added dedicated fiber inj. frac. curve to MOS throughput plots in the web interface.
 - Consolidated recent fixes (RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates).
 - Improved configuration/info tracking text for throughput model metadata.
+- Added moon-target separation as a user-settable parameter (`MOON_SEP`, default 45°); previously fixed at 45° internally.
+- Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).
 
 ### 1.0:
 - Official release 09/03/2026

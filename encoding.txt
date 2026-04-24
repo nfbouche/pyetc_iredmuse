@@ -19,7 +19,7 @@
 "Lam_Ref" (float/int, positive) - REFERENCE WAVE WHEN SNR IS GIVEN
 
 Needed only for moshr/moslr    
-"OBJ_FIB_DISP": float/int (in the web page is in [0,0.3]) - OBJECT FIBER DISPLACEMENT, IN ARCSEC
+"OBJ_FIB_DISP": float/int (in [0, 0.6]) - OBJECT FIBER DISPLACEMENT, IN ARCSEC
     
 "SEE" (float/int, positive) - SEEING
      
@@ -28,6 +28,10 @@ Needed only for moshr/moslr
 "FLI": - FRACTIONAL OF THE MOON ILLUMINATED
 with SKYCALC=False float in [0.0, 1.5, 1.0] (is then translated into fixed MOON 'darksky', 'greysky', 'brightsky')
 with SKYCALC=True  float/int, should be in [0,1] 
+
+"MOON_SEP": float/int (optional, default 45) - MOON-TARGET ANGULAR SEPARATION IN DEGREES
+with SKYCALC=True  float/int in [0, 360] (passed directly to ESO SkyCalc)
+with SKYCALC=False not used (sky is looked up from static files)
 
 "AM": - AIRMASS
 with SKYCALC=False float in [1.0, 1.2, 1.5, 2.0]
