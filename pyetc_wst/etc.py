@@ -195,6 +195,7 @@ class ETC:
             airmass=fo.get("AM", None),
             pwv=fo.get("PWV", None),
             fli=fo.get("FLI", None),
+            moon_target_sep=fo.get("MOON_SEP", 45),
 
             wave_line_center=fo.get('SEL_CWAV', None),
             wave_line_fwhm=fo.get('SEL_FWHM', None),
@@ -353,6 +354,9 @@ class ETC:
                 raise ValueError("FLI must be between 0 and 1.")
             theta_rad = np.arccos(1 - 2 * fli)  # result in radians
             mss = np.degrees(theta_rad)  # convert to degrees
+            moon_target_sep = obs.get('moon_target_sep', 45)
+            if not (0 <= moon_target_sep <= 180):
+                raise ValueError(f"MOON_SEP must be between 0 and 180 degrees (got {moon_target_sep}).")
 
             pwv = obs['pwv']
             allowed_pwv = [0.05, 0.01, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0, 30.0]
@@ -362,7 +366,7 @@ class ETC:
                 pwv = closest_value
 
             # Build cache key for skycalc
-            cache_key = (round(airmass, 4), pwv, round(mss, 2), 
+            cache_key = (round(airmass, 4), pwv, round(mss, 2), round(moon_target_sep, 2),
                         obs['INS'], obs['CH'], conf['lbda1'], conf['lbda2'], conf['dlbda'])
             
             # Check cache
@@ -375,6 +379,7 @@ class ETC:
             skycalc['airmass'] = airmass
             skycalc['pwv'] = pwv
             skycalc['moon_sun_sep'] = mss
+            skycalc['moon_target_sep'] = moon_target_sep
             eps = 1
             skycalc['wmin'] = (conf['lbda1'] / 10) - eps
             skycalc['wmax'] = (conf['lbda2'] / 10) + eps

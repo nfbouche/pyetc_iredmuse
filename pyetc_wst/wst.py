@@ -39,6 +39,8 @@ class WST(ETC):
                 'Fixed IFS red-channel RON: now 1.0*sqrt(2) = 1.4 e- (consistent with blue channel; previously was 1.0*2^0.25 = 1.2 e-).',
                 'Fixed MOS surface-brightness SNR computation that was raising an error.',
                 'Fixed MOS total throughput: now includes the fiber injection fraction (fiber inj. frac.); a dedicated fiber inj. frac. curve is now shown in the web plots.',
+                'Added moon-target separation as a user-settable parameter (MOON_SEP, default 45°); previously fixed at 45° internally.',
+                'Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).',
             ],
         }
         
