@@ -171,6 +171,10 @@ These sub-dictionaries include:
   - 'frac_dark' 
   - 'frac_ron'
 
+For MOS runs, `res_snr['input']` also includes:
+- `'fiber_injection'`: fiber injection fraction (1.0 for surface brightness, computed for point/resolved sources)
+- `'total_trans'`: total transmission used in plots/results. For MOS it is `instrument x atmosphere x fiber_injection`.
+
 Moreover, there is a handy function to plot all the noise components together, and will accept `res_snr['spec']['noise']` (and also `res_snr['peak']['noise']`) for IFS): 
 
 ```python
@@ -194,6 +198,14 @@ This package has been developed from the original `pyetc` package available at h
 update in future version
 
 ## Version
+
+### 1.1:
+- Release date: 24/04/2026
+- Added MOS fiber injection fraction (`fiber_injection`) to exported inputs/results.
+- Updated MOS total throughput to include fiber injection fraction (fiber inj. frac.) in addition to instrument and atmosphere.
+- Added dedicated fiber inj. frac. curve to MOS throughput plots in the web interface.
+- Consolidated recent fixes (RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates).
+- Improved configuration/info tracking text for throughput model metadata.
 
 ### 1.0:
 - Official release 09/03/2026

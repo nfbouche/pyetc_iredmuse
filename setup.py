@@ -1,7 +1,15 @@
 """
 Legacy setup.py for backward compatibility.
+Version is read from pyetc_wst/__init__.py — edit only that file to bump the version.
 """
 from setuptools import setup
+import re
+import os
+
+# Single source of truth for version
+_here = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_here, "pyetc_wst", "__init__.py")) as _f:
+    _version = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', _f.read(), re.M).group(1)
 
 # Read requirements
 with open("requirements.txt", "r") as f:
@@ -9,7 +17,7 @@ with open("requirements.txt", "r") as f:
 
 setup(
     name="pyetc_wst",
-    version="1.1",
+    version=_version,
     description="Exposure Time Calculator for the Wide-Field Spectroscopic Telescope (WST)",
     author="Matteo Ferro",
     author_email="matteo.ferro@inaf.it",
