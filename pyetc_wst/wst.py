@@ -7,6 +7,7 @@ from mpdaf.obj import Spectrum, WaveCoord
 from mpdaf.log import setup_logging
 
 from .etc import ETC, get_data
+from . import __version__ as PACKAGE_VERSION
 
 # used by get_data
 from astropy.table import Table
@@ -27,6 +28,19 @@ class WST(ETC):
         
         # ------ Telescope ---------
         self.name = 'WST'
+        self.throughput_model_desc = 'Throughput model version 1 delivered by Olga Bellido, date 09/03/2026'
+        self.throughput_model_version = '09/03/2026'
+        self.release_info = {
+            'version': PACKAGE_VERSION,
+            'release_date': '24 April 2026',
+            'changelog': [
+                'Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer) for v1.0 and remain valid in v1.1.',
+                'Fixed sky background area computation: now correctly uses pi*r^2 (previously a typo was computing pi^2*r*2).',
+                'Fixed IFS red-channel RON: now 1.0*sqrt(2) = 1.4 e- (consistent with blue channel; previously was 1.0*2^0.25 = 1.2 e-).',
+                'Fixed MOS surface-brightness SNR computation that was raising an error.',
+                'Fixed MOS total throughput: now includes the fiber injection fraction (fiber inj. frac.); a dedicated fiber inj. frac. curve is now shown in the web plots.',
+            ],
+        }
         
         self.tel = dict(effective_area_MOS=93.57, # mean of median and weighted mean of the ICD document
                         effective_area_IFS=92.03, # minimum of the ICD document
@@ -43,8 +57,8 @@ class WST(ETC):
         self.ifs['channels'] = ['blue', 'red']
         # IFS blue channel
         chan = 'blue'
-        self.ifs[chan] = dict(desc = 'Inspired from BlueMUSE throughput, modified with inputs from the IFS team',
-                              version = '09/03/2026',
+        self.ifs[chan] = dict(desc = self.throughput_model_desc,
+                      version = self.throughput_model_version,
                               type = 'IFS',
                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
@@ -62,8 +76,8 @@ class WST(ETC):
 
         # IFS red channel
         chan = 'red'
-        self.ifs[chan] = dict(desc='Inspired from MUSE throughput, modified with inputs from the IFS team', 
-                               version = '09/03/2026',
+        self.ifs[chan] = dict(desc=self.throughput_model_desc,
+                       version = self.throughput_model_version,
                                type='IFS',
                                iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                                iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
@@ -87,8 +101,8 @@ class WST(ETC):
         self.moslr['channels'] = ['blue', 'green', 'yellow', 'red']       
         # MOS-LR blue channel 
         chan = self.moslr['channels'][0]
-        self.moslr[chan] = dict(desc='Inspired from 4MOST LR throughput, modified with inputs from the MOSLR team',
-                                version = '03/03/2026',
+        self.moslr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
@@ -107,8 +121,8 @@ class WST(ETC):
             
         # MOS-LR green channel      
         chan = self.moslr['channels'][1] 
-        self.moslr[chan] = dict(desc='Inspired from 4MOST LR throughput, modified with inputs from the MOSLR team',
-                                version = '03/03/2026',
+        self.moslr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
@@ -127,8 +141,8 @@ class WST(ETC):
 
         # MOS-LR yellow channel      
         chan = self.moslr['channels'][2] 
-        self.moslr[chan] = dict(desc='New channel added',
-                                version = '03/03/2026',
+        self.moslr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
@@ -147,8 +161,8 @@ class WST(ETC):
 
         # MOS-LR red channel      
         chan = self.moslr['channels'][3] 
-        self.moslr[chan] = dict(desc='Inspired from 4MOST LR throughput, modified with inputs from the MOSLR team',
-                                version = '03/03/2026',
+        self.moslr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, updated on 03/03/2026
@@ -171,8 +185,8 @@ class WST(ETC):
         self.moshr['channels'] = ['blue', 'green', 'yellow', 'red']       
         # MOS-HR blue channel 
         chan = self.moshr['channels'][0]
-        self.moshr[chan] = dict(desc='WST HR spectrometer possible baseline description, renamed Blue channel',  
-                                version = '03/03/2026',
+        self.moshr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
@@ -191,8 +205,8 @@ class WST(ETC):
             
         # MOS-HR green channel 
         chan = self.moshr['channels'][1]
-        self.moshr[chan] = dict(desc='WST HR spectrometer possible baseline description, renamed Green channel',  
-                                version = '03/03/2026',
+        self.moshr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
@@ -211,8 +225,8 @@ class WST(ETC):
 
         # MOS-HR V channel
         chan = self.moshr['channels'][2]
-        self.moshr[chan] = dict(desc='WST HR spectrometer possible baseline description, renamed Yellow channel',  
-                                version = '03/03/2026',
+        self.moshr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
@@ -231,8 +245,8 @@ class WST(ETC):
 
         # MOS-HR I channel
         chan = self.moshr['channels'][3]
-        self.moshr[chan] = dict(desc='WST HR spectrometer possible baseline description, renamed Red channel',  
-                                version = '03/03/2026',
+        self.moshr[chan] = dict(desc=self.throughput_model_desc,
+                    version = self.throughput_model_version,
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
@@ -254,10 +268,21 @@ class WST(ETC):
             self.logger.debug(f"WST.__init__ processing time: {end_time - start_time:.4f} seconds")
         
     def info(self, ins=None):
+        rel = self.get_release_info()
+        self.logger.info('ETC version %s release date %s', rel['version'], rel['release_date'])
+        for item in rel['changelog']:
+            self.logger.info('\t- %s', item)
         if ins is None:
             self._info(['ifs', 'moslr', 'moshr'])
         else:
             self._info([ins])
+
+    def get_release_info(self):
+        return {
+            'version': self.release_info.get('version', PACKAGE_VERSION),
+            'release_date': self.release_info.get('release_date', ''),
+            'changelog': list(self.release_info.get('changelog', [])),
+        }
 
 # # # # # # # MORE # # # # # #
 # MOS-HR missing the iq instrument (used 0.3" constant), MOS-LR IQ not clear (used 0.3" constant)

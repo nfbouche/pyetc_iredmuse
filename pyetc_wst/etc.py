@@ -112,8 +112,8 @@ class ETC:
             for chan in insfam['channels']:
                 ins = insfam[chan]
                 self.logger.info('%s type %s Channel %s', ins_name.upper(), ins['type'], chan)
-                self.logger.info('\t %s', ins['desc'])
-                self.logger.info('\t version %s', ins['version'])
+                self.logger.info('\t Throughput model: %s', ins['desc'])
+                self.logger.info('\t Configuration version: %s', ins['version'])
                 self.logger.info('\t Spaxel size: %.2f arcsec Image Quality tel and ins fwhm: %.2f and %.2f arcsec beta: %.2f ', ins['spaxel_size'], ins['iq_fwhm_tel'],ins['iq_fwhm_ins'], ins['iq_beta'])
                 if 'aperture' in ins.keys():
                     self.logger.info('\t Fiber aperture: %.1f arcsec', ins['aperture'])
@@ -1429,6 +1429,7 @@ class ETC:
         ron_tot = Spectrum(data=np.full(wave.shape, ron), wave=spec.wave)
         
         factor_source = spec * flux * Kt * obs['dit'] * obs['ndit']
+        fiber_injection_full = np.ones_like(wave)
         
         if obs['ima_type'] == 'sb':
             source_ph_aperture = factor_source * np.pi * (ins['aperture'] / 2)**2
@@ -1453,6 +1454,7 @@ class ETC:
 
             # Interpolate onto the full wave grid
             frac_fiber_full = np.interp(wave, selected_wave, frac_fiber)
+            fiber_injection_full = frac_fiber_full
 
             source_ph_aperture = factor_source * frac_fiber_full
 
@@ -1464,6 +1466,7 @@ class ETC:
         frac_dark_aperture   = dark_tot / tot_noise_aperture**2
         frac_ron_aperture    = ron_tot / tot_noise_aperture**2
 
+        fiber_injection_spec = Spectrum(data=fiber_injection_full, wave=spec.wave)
         res['input'] = dict(
             flux_source=spec, 
             atm_abs=ins_atm, 
@@ -1472,7 +1475,8 @@ class ETC:
             QE_trans=ins['QE'],
             tel_trans=ins['telescope'],
             ins_noQE_trans=ins['total_instrumental'],
-            total_trans = ins_ins*ins_atm
+            fiber_injection=fiber_injection_spec,
+            total_trans=ins_ins * ins_atm * fiber_injection_spec
         )
 
         res['obs'] = obs
@@ -2166,6 +2170,7 @@ class ETC:
         ron_tot = Spectrum(data=np.full(wave.shape, ron), wave=spec.wave)
         
         factor_source = spec * flux * Kt
+        fiber_injection_snr = 1.0
         
         if obs['ima_type'] == 'sb':
             source_ph_aperture = factor_source * np.pi * (ins['aperture'] / 2)**2
@@ -2184,6 +2189,7 @@ class ETC:
 
             # Compute fiber aperture fraction for single image
             frac_fiber_snr = self.mos_fiber_aperture(ins, selected_image, displacement=obs["disp"])
+            fiber_injection_snr = frac_fiber_snr
 
             # Apply fiber fraction to full spectrum (use snr_wave fraction for all)
             source_ph_aperture = factor_source * frac_fiber_snr
@@ -2341,6 +2347,7 @@ class ETC:
             res['dit'] = ditv
             obs['dit'] = ditv
 
+        fiber_injection_full = Spectrum(data=np.full(wave.shape, fiber_injection_snr), wave=spec.wave)
         res['input'] = dict(
             flux_source=spec, 
             atm_abs=ins_atm, 
@@ -2349,7 +2356,8 @@ class ETC:
             QE_trans=ins['QE'],
             tel_trans=ins['telescope'],
             ins_noQE_trans=ins['total_instrumental'],
-            total_trans = ins_ins*ins_atm
+            fiber_injection=fiber_injection_full,
+            total_trans=ins_ins * ins_atm * fiber_injection_full
         )
 
         res['obs'] = obs
