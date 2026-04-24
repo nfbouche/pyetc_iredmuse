@@ -379,6 +379,13 @@ class ETC:
             skycalc['airmass'] = airmass
             skycalc['pwv'] = pwv
             skycalc['moon_sun_sep'] = mss
+            # SkyCalc requires a geometrically consistent moon/target configuration.
+            # Build a moon altitude that is always compatible with the requested
+            # moon-target separation and target zenith distance (from airmass).
+            z_target = np.degrees(np.arccos(np.clip(1.0 / max(float(airmass), 1.0), -1.0, 1.0)))
+            z_moon = np.clip(float(moon_target_sep) + z_target, 0.0, 180.0)
+            moon_alt = 90.0 - z_moon
+            skycalc['moon_alt'] = moon_alt
             skycalc['moon_target_sep'] = moon_target_sep
             eps = 1
             skycalc['wmin'] = (conf['lbda1'] / 10) - eps
@@ -386,7 +393,13 @@ class ETC:
             skycalc['wdelta'] = conf['dlbda'] / (10 + eps)
             skycalc['wgrid_mode'] = 'fixed_wavelength_step'
 
-            tab = skycalc.get_sky_spectrum(return_type="tab-ext")
+            try:
+                tab = skycalc.get_sky_spectrum(return_type="tab-ext")
+            except Exception as exc:
+                raise RuntimeError(
+                    f"SkyCalc failed for AM={airmass}, FLI={fli}, MOON_SEP={moon_target_sep}, "
+                    f"moon_alt={moon_alt:.2f}: {exc}"
+                ) from exc
 
             start = tab['lam'][0]*10
             step = (tab['lam'][1]-tab['lam'][0])*10
