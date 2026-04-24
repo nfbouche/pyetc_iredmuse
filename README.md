@@ -105,6 +105,7 @@ full_obs = {
     
     "PWV": 10,
     "FLI": 0.5,
+    "MOON_SEP": 45,
     "SEE": 0.8,
     "AM": 1.2,
     "SKYCALC": False,
