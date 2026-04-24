@@ -9,7 +9,7 @@ with open("requirements.txt", "r") as f:
 
 setup(
     name="pyetc_wst",
-    version="0.1.0",
+    version="1.1",
     description="Exposure Time Calculator for the Wide-Field Spectroscopic Telescope (WST)",
     author="Matteo Ferro",
     author_email="matteo.ferro@inaf.it",
