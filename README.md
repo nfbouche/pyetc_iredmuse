@@ -200,6 +200,10 @@ update in future version
 
 ## Version
 
+### 1.2:
+- Release date: 29/04/2026
+- Fixed SkyCalc moon geometry: moon altitude is now placed strictly inside the constraint boundary (`|z_target − z_moon| < ρ`), resolving SkyCalc server rejections for airmass > 1.0.
+
 ### 1.1:
 - Release date: 24/04/2026
 - Added MOS fiber injection fraction (`fiber_injection`) to exported inputs/results.
