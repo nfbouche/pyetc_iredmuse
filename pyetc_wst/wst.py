@@ -32,15 +32,16 @@ class WST(ETC):
         self.throughput_model_version = '09/03/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '24 April 2026',
+            'release_date': '29 April 2026',
             'changelog': [
-                'Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer) for v1.0 and remain valid in v1.1.',
+                'Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer) for v1.0 and remain valid in v1.2.',
                 'Fixed sky background area computation: now correctly uses pi*r^2 (previously a typo was computing pi^2*r*2).',
                 'Fixed IFS red-channel RON: now 1.0*sqrt(2) = 1.4 e- (consistent with blue channel; previously was 1.0*2^0.25 = 1.2 e-).',
                 'Fixed MOS surface-brightness SNR computation that was raising an error.',
                 'Fixed MOS total throughput: now includes the fiber injection fraction (fiber inj. frac.); a dedicated fiber inj. frac. curve is now shown in the web plots.',
                 'Added moon-target separation as a user-settable parameter (MOON_SEP, default 45°); previously fixed at 45° internally.',
                 'Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).',
+                'Fixed SkyCalc moon geometry: moon altitude is now placed strictly inside the constraint boundary, resolving failures for airmass > 1.0.',
             ],
         }
         
