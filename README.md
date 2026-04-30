@@ -202,7 +202,7 @@ update in future version
 
 ### 1.2:
 - Release date: 29/04/2026
-- Fixed SkyCalc moon geometry: moon altitude is now placed strictly inside the constraint boundary (`|z_target − z_moon| < ρ`), resolving SkyCalc server rejections for airmass > 1.0.
+- Fixed SkyCalc sky background retrieval: bypassed `skycalc_ipy.get_sky_spectrum()` to call `SkyModel` directly and read the returned FITS HDUList with an explicit `format='fits'` argument, resolving an `IORegistryError` from newer astropy versions that can no longer auto-detect the format of an in-memory HDUList. Moon altitude is derived from the moon-target separation and target zenith distance (`z_moon = ρ + z_target`), which always satisfies the SkyCalc constraint `|z − z_moon| ≤ ρ ≤ z + z_moon` for all airmasses.
 
 ### 1.1:
 - Release date: 24/04/2026
