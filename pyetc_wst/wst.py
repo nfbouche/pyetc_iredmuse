@@ -41,7 +41,7 @@ class WST(ETC):
                 'Fixed MOS total throughput: now includes the fiber injection fraction (fiber inj. frac.); a dedicated fiber inj. frac. curve is now shown in the web plots.',
                 'Added moon-target separation as a user-settable parameter (MOON_SEP, default 45°); previously fixed at 45° internally.',
                 'Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).',
-                'Fixed SkyCalc moon geometry: moon altitude is now placed strictly inside the constraint boundary, resolving failures for airmass > 1.0.',
+                'Fixed SkyCalc sky background retrieval: bypassed skycalc_ipy.get_sky_spectrum() to call SkyModel directly and read the returned FITS HDUList with format="fits" explicitly, resolving an IORegistryError from newer astropy versions. Moon altitude is now correctly derived as z_moon = rho + z_target, satisfying the SkyCalc constraint for all airmasses.',
             ],
         }
         

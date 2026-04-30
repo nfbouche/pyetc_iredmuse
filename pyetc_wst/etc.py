@@ -384,10 +384,9 @@ class ETC:
             # moon-target separation and target zenith distance (from airmass).
             z_target = np.degrees(np.arccos(np.clip(1.0 / max(float(airmass), 1.0), -1.0, 1.0)))
             z_moon = np.clip(float(moon_target_sep) + z_target, 0.0, 180.0)
-            # Subtract 1° so moon_alt is strictly inside the SkyCalc constraint
-            # |z_target - z_moon| < rho (strict inequality required by SkyCalc).
-            # Without this offset the boundary case causes a server-side rejection.
-            moon_alt = np.clip(90.0 - z_moon + 1.0, -89.0, 89.0)
+            # moon_alt is chosen so zmoon = z_target + rho, which always satisfies
+            # the SkyCalc constraint |z - zmoon| <= rho <= z + zmoon with equality.
+            moon_alt = np.clip(90.0 - z_moon, -89.0, 89.0)
             skycalc['moon_alt'] = moon_alt
             skycalc['moon_target_sep'] = moon_target_sep
             eps = 1
@@ -396,28 +395,21 @@ class ETC:
             skycalc['wdelta'] = conf['dlbda'] / (10 + eps)
             skycalc['wgrid_mode'] = 'fixed_wavelength_step'
 
-            try:
-                tab = skycalc.get_sky_spectrum(return_type="tab-ext")
-            except Exception as exc:
-                # Newer astropy requires an explicit format hint when reading
-                # from a BytesIO object.  skycalc_ipy stores the raw FITS data
-                # in last_skycalc_response before the Table.read call, so we
-                # can fall back to reading it ourselves with format='fits'.
-                from astropy.table import Table as _Table
-                raw = getattr(skycalc, 'last_skycalc_response', None)
-                if raw is not None:
-                    try:
-                        tab = _Table.read(raw, format='fits')
-                    except Exception:
-                        raise RuntimeError(
-                            f"SkyCalc failed for AM={airmass}, FLI={fli}, MOON_SEP={moon_target_sep}, "
-                            f"moon_alt={moon_alt:.2f}: {exc}"
-                        ) from exc
-                else:
-                    raise RuntimeError(
-                        f"SkyCalc failed for AM={airmass}, FLI={fli}, MOON_SEP={moon_target_sep}, "
-                        f"moon_alt={moon_alt:.2f}: {exc}"
-                    ) from exc
+            # Bypass get_sky_spectrum() to avoid the astropy format
+            # auto-detection failure when reading an HDUList object.
+            # Call SkyModel directly and supply format='fits' explicitly.
+            from skycalc_ipy.core import SkyModel as _SkyModel
+            _skm = _SkyModel()
+            _skm(**skycalc.values)
+            if _skm.data is None:
+                raise RuntimeError(
+                    f"SkyCalc server rejected request for AM={airmass}, FLI={fli}, "
+                    f"MOON_SEP={moon_target_sep}, moon_alt={moon_alt:.2f}. "
+                    f"Check skycalc_ipy logs for details."
+                )
+            tab = Table.read(_skm.data, format='fits')
+            if tab['lam'].unit is None:
+                tab['lam'].unit = u.um
 
             start = tab['lam'][0]*10
             step = (tab['lam'][1]-tab['lam'][0])*10
