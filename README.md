@@ -206,6 +206,7 @@ update in future version
 - Fixed FITS column names: `skycalc_cli` v1.4 returns lowercase column names (`lam`, `flux`, `trans`) — updated in `etc.py` (`get_sky()`).
 - Replaced deprecated `pkg_resources` with `importlib.resources` in `specalib.py` for Python 3.9+ compatibility.
 - Removed invalid PWV value `0.01` from the allowed grid (SkyCalc minimum is `0.05`); previously this caused SkyCalc to reject the entire request.
+- Fixed false `MAG_SYS` validation error raised for emission-line sources (`Obj_SED="line"`): the check is now skipped when the SED type is `"line"` or `OBJ_MAG` is `None`, since magnitude normalisation is not used in those cases.
 
 ### 1.2:
 - Release date: 29/04/2026
