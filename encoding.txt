@@ -39,7 +39,7 @@ with SKYCALC=True  float/int
 
 "PWV": - PRECIPITABLE WATER VAPOR
 with SKYCALC=False float in [1.0, 3.5, 10.0]
-with SKYCALC=True float/int (will be rounded to the nearest number to [0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0])
+with SKYCALC=True float/int (will be rounded to the nearest value in [0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0, 30.0])
 
 
 "Obj_SED":

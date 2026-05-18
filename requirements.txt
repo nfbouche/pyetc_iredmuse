@@ -8,4 +8,4 @@ astropy>=5.0.0
 mpdaf>=3.5.0
 
 # Sky calculation
-skycalc_ipy>=0.1.0
+skycalc_cli

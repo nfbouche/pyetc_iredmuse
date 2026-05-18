@@ -19,10 +19,10 @@ Exposure Time Calculator (ETC) for the Wide-Field Spectroscopic Telescope (WST).
 - matplotlib >= 3.3.0
 - astropy >= 5.0.0
 - mpdaf >= 3.6.0
-- skycalc_ipy >= 0.1.0
+- skycalc_cli
 
 ```
-pip install "numpy>=1.20.0" "scipy>=1.7.0" "matplotlib>=3.3.0" "astropy>=5.0.0" "mpdaf>=3.6.0" "skycalc_ipy>=0.1.0"
+pip install "numpy>=1.20.0" "scipy>=1.7.0" "matplotlib>=3.3.0" "astropy>=5.0.0" "mpdaf>=3.6.0" "skycalc_cli"
 ```
 
 ## Installation
@@ -200,6 +200,13 @@ update in future version
 
 ## Version
 
+### 1.3:
+- Release date: 14/05/2026
+- Migrated sky background retrieval from `skycalc_ipy` to `skycalc_cli` (official ESO CLI package): sky model data now accessed via `skm.data` attribute and parsed with `Table.read(BytesIO(skm.data), format='fits')`.
+- Fixed FITS column names: `skycalc_cli` v1.4 returns lowercase column names (`lam`, `flux`, `trans`) — updated in `etc.py` (`get_sky()`).
+- Replaced deprecated `pkg_resources` with `importlib.resources` in `specalib.py` for Python 3.9+ compatibility.
+- Removed invalid PWV value `0.01` from the allowed grid (SkyCalc minimum is `0.05`); previously this caused SkyCalc to reject the entire request.
+
 ### 1.2:
 - Release date: 29/04/2026
 - Fixed SkyCalc sky background retrieval: bypassed `skycalc_ipy.get_sky_spectrum()` to call `SkyModel` directly and read the returned FITS HDUList with an explicit `format='fits'` argument, resolving an `IORegistryError` from newer astropy versions that can no longer auto-detect the format of an in-memory HDUList. Moon altitude is derived from the moon-target separation and target zenith distance (`z_moon = ρ + z_target`), which always satisfies the SkyCalc constraint `|z − z_moon| ≤ ρ ≤ z + z_moon` for all airmasses.
@@ -208,11 +215,10 @@ update in future version
 - Release date: 24/04/2026
 - Added MOS fiber injection fraction (`fiber_injection`) to exported inputs/results.
 - Updated MOS total throughput to include fiber injection fraction (fiber inj. frac.) in addition to instrument and atmosphere.
-- Added dedicated fiber inj. frac. curve to MOS throughput plots in the web interface.
 - Consolidated recent fixes (RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates).
 - Improved configuration/info tracking text for throughput model metadata.
 - Added moon-target separation as a user-settable parameter (`MOON_SEP`, default 45°); previously fixed at 45° internally.
-- Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).
+- Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously rejected values above 0.3 arcsec).
 
 ### 1.0:
 - Official release 09/03/2026
