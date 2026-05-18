@@ -13,7 +13,8 @@ from astropy.table import Table
 import astropy.units as u
 from astropy.modeling.models import Sersic2D
 
-import skycalc_ipy
+from io import BytesIO
+from skycalc_cli.skycalc import SkyModel as _SkyCLIModel
 
 from mpdaf.obj import Spectrum, WaveCoord, Image, moffat_image
 
@@ -337,6 +338,14 @@ class ETC:
         if static:
             # look up in the loaded static sky files
             pwv = obs.get('pwv')
+            # Expose effective values for debug/reporting consistency.
+            obs['airmass_effective'] = airmass
+            obs['pwv_effective'] = pwv
+            obs['moon_target_sep_effective'] = obs.get('moon_target_sep')
+            obs['moon_alt_effective'] = obs.get('moon_alt')
+            obs['incl_moon_effective'] = None
+            obs['moon_sun_sep_effective'] = None
+            obs['skycalc_adjustments'] = []
             available_airmass = set(sky['airmass'] for sky in conf['sky'])
             available_moon = set(sky['moon'] for sky in conf['sky'])
             available_pwv = set(sky['pwv'] for sky in conf['sky'])
@@ -346,70 +355,167 @@ class ETC:
             raise ValueError(f"moon {moon} airmass {airmass} pwv {pwv} not found in loaded sky configurations. Available airmass: {sorted(available_airmass)}, available moon: {sorted(available_moon)}, available pwv: {sorted(available_pwv)}")
         else:
             # compute on the fly with skycalc
+            adjustments = []
 
-            fli = obs['fli']
+            # SkyCalc expects airmass in a physical range; keep the request valid.
+            try:
+                airmass = float(airmass)
+            except (TypeError, ValueError):
+                adjustments.append(f"AM not valid ({airmass}); using default 1.0")
+                airmass = 1.0
+            airmass_eff = float(np.clip(airmass, 1.0, 3.0))
+            if not np.isclose(airmass_eff, airmass):
+                adjustments.append(f"AM {airmass:.3f} out of range [1.0, 3.0]; using {airmass_eff:.3f}")
+            airmass = airmass_eff
+
+            fli = obs.get('fli')
             if fli is None:
-                raise ValueError("FLI is required.")
-            if not 0 <= fli <= 1:
-                raise ValueError("FLI must be between 0 and 1.")
+                adjustments.append("FLI missing; using default 0.0")
+                fli = 0.0
+            try:
+                fli = float(fli)
+            except (TypeError, ValueError):
+                adjustments.append(f"FLI not valid ({fli}); using default 0.0")
+                fli = 0.0
+            fli_eff = float(np.clip(fli, 0.0, 1.0))
+            if not np.isclose(fli_eff, fli):
+                adjustments.append(f"FLI {fli:.3f} out of range [0, 1]; using {fli_eff:.3f}")
+            fli = fli_eff
+
             theta_rad = np.arccos(1 - 2 * fli)  # result in radians
             mss = np.degrees(theta_rad)  # convert to degrees
             moon_target_sep = obs.get('moon_target_sep', 45)
-            if not (0 <= moon_target_sep <= 180):
-                raise ValueError(f"MOON_SEP must be between 0 and 180 degrees (got {moon_target_sep}).")
+            try:
+                moon_target_sep = float(moon_target_sep)
+            except (TypeError, ValueError):
+                adjustments.append(f"MOON_SEP not valid ({moon_target_sep}); using default 45")
+                moon_target_sep = 45.0
+            moon_target_sep_eff = float(np.clip(moon_target_sep, 0.0, 180.0))
+            if not np.isclose(moon_target_sep_eff, moon_target_sep):
+                adjustments.append(
+                    f"MOON_SEP {moon_target_sep:.3f} out of range [0, 180]; using {moon_target_sep_eff:.3f}"
+                )
+            moon_target_sep = moon_target_sep_eff
 
-            pwv = obs['pwv']
-            allowed_pwv = [0.05, 0.01, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0, 30.0]
+            pwv = obs.get('pwv', 1.0)
+            try:
+                pwv = float(pwv)
+            except (TypeError, ValueError):
+                adjustments.append(f"PWV not valid ({pwv}); using default 1.0")
+                pwv = 1.0
+            allowed_pwv = [0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 3.5, 5.0, 7.5, 10.0, 20.0, 30.0]
             closest_value = min(allowed_pwv, key=lambda v: np.abs(v - pwv))
             if pwv not in allowed_pwv:
                 self.logger.warning(f"PWV value not allowed, assigned the closest one: {pwv} → {closest_value}")
+                adjustments.append(f"PWV {pwv:.3f} not on allowed grid; using {closest_value}")
                 pwv = closest_value
 
-            # Build cache key for skycalc
-            cache_key = (round(airmass, 4), pwv, round(mss, 2), round(moon_target_sep, 2),
-                        obs['INS'], obs['CH'], conf['lbda1'], conf['lbda2'], conf['dlbda'])
-            
+            # Enforce documented moon-geometry constraints:
+            # |z-zmoon| <= rho <= z+zmoon, with z=90-alt(target), zmoon=90-altmoon.
+            # moon_alt is fixed at 45° (not a user-facing parameter).
+            moon_alt = 45.0
+            z_target = float(np.degrees(np.arccos(np.clip(1.0 / max(float(airmass), 1.0), -1.0, 1.0))))
+            z_moon = 90.0 - moon_alt
+            rho_min = abs(z_target - z_moon)
+            rho_max = min(180.0, z_target + z_moon)
+            clipped_sep = float(np.clip(moon_target_sep, rho_min, rho_max))
+            if not np.isclose(clipped_sep, moon_target_sep):
+                self.logger.warning(
+                    "MOON_SEP %.2f outside valid range [%.3f, %.3f] for AM=%.3f and moon_alt=%.2f; using %.3f",
+                    moon_target_sep, rho_min, rho_max, airmass, moon_alt, clipped_sep
+                )
+                adjustments.append(
+                    f"MOON_SEP {moon_target_sep:.3f} not geometrically valid for AM={airmass:.3f}; using {clipped_sep:.3f}"
+                )
+            moon_target_sep = clipped_sep
+
+            # For (near) new moon, disable scattered moonlight component directly.
+            # This follows SkyCalc semantics and avoids inconsistent edge cases.
+            include_moon = 'N' if fli <= 1e-3 else 'Y'
+
+            # Keep track of the effective values really used by SkyCalc.
+            obs['airmass_effective'] = airmass
+            obs['pwv_effective'] = pwv
+            obs['moon_target_sep_effective'] = moon_target_sep
+            obs['moon_alt_effective'] = moon_alt
+            obs['incl_moon_effective'] = include_moon
+            obs['moon_sun_sep_effective'] = mss
+            obs['skycalc_adjustments'] = adjustments
+
+            skycalc_params = {
+                'msolflux': 130.0,
+                'observatory': 'paranal',
+                'airmass': airmass,
+                'pwv': pwv,
+                'incl_moon': include_moon,
+                'moon_sun_sep': mss,
+                'moon_alt': moon_alt,
+                'moon_target_sep': moon_target_sep,
+            }
+
+            # Build cache key from effective SkyCalc moon params.
+            cache_key = (
+                round(airmass, 4),
+                pwv,
+                round(mss, 2),
+                round(moon_target_sep, 2),
+                round(moon_alt, 2),
+                include_moon,
+                obs['INS'],
+                obs['CH'],
+                conf['lbda1'],
+                conf['lbda2'],
+                conf['dlbda']
+            )
+
             # Check cache
             if cache_key in ETC._skycalc_cache:
                 return ETC._skycalc_cache[cache_key]
-
-            skycalc = skycalc_ipy.SkyCalc()
-            skycalc["msolflux"] = 130
-            skycalc['observatory'] = 'paranal'
-            skycalc['airmass'] = airmass
-            skycalc['pwv'] = pwv
-            skycalc['moon_sun_sep'] = mss
-            # SkyCalc requires a geometrically consistent moon/target configuration.
-            # Build a moon altitude that is always compatible with the requested
-            # moon-target separation and target zenith distance (from airmass).
-            z_target = np.degrees(np.arccos(np.clip(1.0 / max(float(airmass), 1.0), -1.0, 1.0)))
-            z_moon = np.clip(float(moon_target_sep) + z_target, 0.0, 180.0)
-            # moon_alt is chosen so zmoon = z_target + rho, which always satisfies
-            # the SkyCalc constraint |z - zmoon| <= rho <= z + zmoon with equality.
-            moon_alt = np.clip(90.0 - z_moon, -89.0, 89.0)
-            skycalc['moon_alt'] = moon_alt
-            skycalc['moon_target_sep'] = moon_target_sep
             eps = 1
-            skycalc['wmin'] = (conf['lbda1'] / 10) - eps
-            skycalc['wmax'] = (conf['lbda2'] / 10) + eps
-            skycalc['wdelta'] = conf['dlbda'] / (10 + eps)
-            skycalc['wgrid_mode'] = 'fixed_wavelength_step'
+            wmin_nm = (conf['lbda1'] / 10) - eps
+            wmax_nm = (conf['lbda2'] / 10) + eps
+            wdelta_nm = conf['dlbda'] / 10
+            # Enforce documented wavelength-grid constraints.
+            wmin_nm = float(np.clip(wmin_nm, 300.0, 30000.0))
+            wmax_nm = float(np.clip(wmax_nm, 300.0, 30000.0))
+            if wmax_nm <= wmin_nm:
+                wmax_nm = min(30000.0, wmin_nm + 1.0)
+                adjustments.append("Adjusted wavelength bounds to satisfy wmin < wmax")
+            wdelta_nm = float(max(1e-6, wdelta_nm))
+            skycalc_params['wmin'] = wmin_nm
+            skycalc_params['wmax'] = wmax_nm
+            skycalc_params['wdelta'] = wdelta_nm
+            skycalc_params['wgrid_mode'] = 'fixed_wavelength_step'
 
-            # Bypass get_sky_spectrum() to avoid the astropy format
-            # auto-detection failure when reading an HDUList object.
-            # Call SkyModel directly and supply format='fits' explicitly.
-            from skycalc_ipy.core import SkyModel as _SkyModel
-            _skm = _SkyModel()
-            _skm(**skycalc.values)
+            # Use skycalc_cli (official ESO CLI) to query the SkyCalc server.
+            # SkyModel.data is raw bytes; wrap in BytesIO for astropy Table.read.
+            _skm = _SkyCLIModel()
+            _skm.stop_on_errors_and_exceptions = False
+            _skm.callwith(skycalc_params)
             if _skm.data is None:
-                raise RuntimeError(
-                    f"SkyCalc server rejected request for AM={airmass}, FLI={fli}, "
-                    f"MOON_SEP={moon_target_sep}, moon_alt={moon_alt:.2f}. "
-                    f"Check skycalc_ipy logs for details."
+                # Last-resort fallback: disable moon component and retry.
+                adjustments.append(
+                    "SkyCalc rejected parameters; retried with incl_moon='N' for robustness"
                 )
-            tab = Table.read(_skm.data, format='fits')
+                obs['skycalc_adjustments'] = adjustments
+                skycalc_params['incl_moon'] = 'N'
+                skycalc_params['moon_target_sep'] = 45.0
+                skycalc_params['moon_alt'] = 45.0
+                _skm = _SkyCLIModel()
+                _skm.stop_on_errors_and_exceptions = False
+                _skm.callwith(skycalc_params)
+                if _skm.data is None:
+                    raise RuntimeError(
+                        f"SkyCalc server rejected request for AM={airmass}, FLI={fli}, "
+                        f"MOON_SEP={moon_target_sep}, moon_alt={moon_alt:.2f}."
+                    )
+                obs['incl_moon_effective'] = 'N'
+                obs['moon_target_sep_effective'] = 45.0
+                obs['moon_alt_effective'] = 45.0
+                obs['skycalc_adjustments'] = adjustments
+            tab = Table.read(BytesIO(_skm.data), format='fits')
             if tab['lam'].unit is None:
-                tab['lam'].unit = u.um
+                tab['lam'].unit = u.nm
 
             start = tab['lam'][0]*10
             step = (tab['lam'][1]-tab['lam'][0])*10
@@ -2643,21 +2749,26 @@ def compute_sky(outdir):
     all_airmass = [1.0, 1.2, 1.5, 2.0]
     all_pwv = [1.0, 3.5, 10.0]
 
-    skycalc = skycalc_ipy.SkyCalc()
-    skycalc["msolflux"] = 130
-    skycalc['observatory'] = 'paranal'
-    skycalc['wgrid_mode'] = 'fixed_wavelength_step'
-    skycalc['wmin'] = 300
-    skycalc['wmax'] = 1200
-    skycalc['wdelta'] = 0.01
-
     for am in all_airmass:
-        skycalc['airmass'] = am
         for moon, mss in zip(all_moons, all_mss):
-            skycalc['moon_sun_sep'] = mss
             for pwv in all_pwv:
-                skycalc['pwv'] = pwv
-                tbl = skycalc.get_sky_spectrum(return_type="tab-ext")
+                _skm = _SkyCLIModel()
+                _skm.stop_on_errors_and_exceptions = False
+                _skm.callwith({
+                    'msolflux': 130.0,
+                    'observatory': 'paranal',
+                    'wgrid_mode': 'fixed_wavelength_step',
+                    'wmin': 300.0,
+                    'wmax': 1200.0,
+                    'wdelta': 0.01,
+                    'airmass': am,
+                    'moon_sun_sep': float(mss),
+                    'pwv': pwv,
+                })
+                if _skm.data is None:
+                    print(f"SkyCalc failed for AM={am}, moon={moon}, PWV={pwv}; skipping.")
+                    continue
+                tbl = Table.read(BytesIO(_skm.data), format='fits')
                 tbl.meta['AIRMASS'] = am
                 tbl.meta['MOONPH'] = moon
                 tbl.meta['MSS'] = mss

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy import constants, integrate
 from astropy import units as u
 from astropy.constants import h, c, k_B
-import pkg_resources
+from importlib import resources
 
 class PhotometricSystem:
     """
@@ -64,12 +64,12 @@ class PhotometricSystem:
     
     def _load_filter_profiles(self):
         """Loads filter transmission profiles from files."""
-        filters_folder = pkg_resources.resource_filename("pyetc_wst", "Band_Filters/")
+        filters_folder = str(resources.files("pyetc_wst").joinpath("Band_Filters/"))
         band_filters = {}
         
         for filename in os.listdir(filters_folder):
             if filename.endswith(".txt"):
-                with open(filters_folder + filename, 'r', encoding='latin-1') as f:
+                with open(os.path.join(filters_folder, filename), 'r', encoding='latin-1') as f:
                     lines = f.readlines()
                     data = np.loadtxt([line for line in lines if not line.strip().startswith(('#', '!'))])
                     band_name = filename[:-4]  # Remove '.txt' extension
@@ -181,7 +181,7 @@ class SEDModels:
     def __init__(self):
         # Save all filenames from ESO_original_spectra/ directory to a dictionary
         self.eso_spectra_files = {}
-        eso_spectra_dir = pkg_resources.resource_filename("pyetc_wst", "ESO_original_spectra/")
+        eso_spectra_dir = str(resources.files("pyetc_wst").joinpath("ESO_original_spectra/"))
         try:
             for idx, filename in enumerate(os.listdir(eso_spectra_dir)):
                 if os.path.isfile(os.path.join(eso_spectra_dir, filename)):

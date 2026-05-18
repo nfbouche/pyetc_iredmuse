@@ -32,16 +32,51 @@ class WST(ETC):
         self.throughput_model_version = '09/03/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '29 April 2026',
-            'changelog': [
-                'Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer) for v1.0 and remain valid in v1.2.',
-                'Fixed sky background area computation: now correctly uses pi*r^2 (previously a typo was computing pi^2*r*2).',
-                'Fixed IFS red-channel RON: now 1.0*sqrt(2) = 1.4 e- (consistent with blue channel; previously was 1.0*2^0.25 = 1.2 e-).',
-                'Fixed MOS surface-brightness SNR computation that was raising an error.',
-                'Fixed MOS total throughput: now includes the fiber injection fraction (fiber inj. frac.); a dedicated fiber inj. frac. curve is now shown in the web plots.',
-                'Added moon-target separation as a user-settable parameter (MOON_SEP, default 45°); previously fixed at 45° internally.',
-                'Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).',
-                'Fixed SkyCalc sky background retrieval: bypassed skycalc_ipy.get_sky_spectrum() to call SkyModel directly and read the returned FITS HDUList with format="fits" explicitly, resolving an IORegistryError from newer astropy versions. Moon altitude is now correctly derived as z_moon = rho + z_target, satisfying the SkyCalc constraint for all airmasses.',
+            'release_date': '14 May 2026',
+            'history': [
+                {
+                    'version': '1.3',
+                    'label': 'Version 1.3',
+                    'release_date': '14 May 2026',
+                    'changes': [
+                        'Migrated sky background retrieval from skycalc_ipy to skycalc_cli (official ESO CLI package): sky model data now accessed via skm.data attribute and parsed with Table.read(BytesIO(skm.data), format="fits").',
+                        'Fixed FITS column names: skycalc_cli v1.4 returns lowercase column names (lam, flux, trans) — updated in both etc.py (get_sky()) and app.py (compute_sky_dummy()).',
+                        'Replaced deprecated pkg_resources with importlib.resources in specalib.py for Python 3.9+ compatibility.',
+                        'SNR values now displayed in bold in the computation results panel.',
+                        'Plot titles and trace names corrected: "x spectral pixel/coadding" replaced with "/ spectral pixel/coadding" throughout the web interface.',
+                        'Removed invalid PWV value 0.01 from the allowed grid (SkyCalc minimum is 0.05); previously this caused SkyCalc to reject the entire request.',
+                    ],
+                },
+                {
+                    'version': '1.2',
+                    'label': 'Version 1.2',
+                    'release_date': '29 April 2026',
+                    'changes': [
+                        'Fixed SkyCalc sky background retrieval: bypassed skycalc_ipy.get_sky_spectrum() to call SkyModel directly and read the returned FITS HDUList with an explicit format="fits" argument, resolving an IORegistryError from newer astropy versions.',
+                        'Moon altitude now derived from moon-target separation and target zenith distance (z_moon = rho + z_target), satisfying the SkyCalc constraint |z - z_moon| <= rho <= z + z_moon for all airmasses.',
+                    ],
+                },
+                {
+                    'version': '1.1',
+                    'label': 'Version 1.1',
+                    'release_date': '24 April 2026',
+                    'changes': [
+                        'Added MOS fiber injection fraction (fiber_injection) to exported inputs/results.',
+                        'Updated MOS total throughput to include fiber injection fraction; added dedicated fiber inj. frac. curve to MOS throughput plots in the web interface.',
+                        'Consolidated recent fixes: RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates.',
+                        'Added moon-target separation as a user-settable parameter (MOON_SEP, default 45 deg); previously fixed at 45 deg internally.',
+                        'Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously the web interface rejected values above 0.3 arcsec).',
+                    ],
+                },
+                {
+                    'version': '1.0',
+                    'label': 'Version 1.0 — Official Release',
+                    'release_date': '09 March 2026',
+                    'changes': [
+                        'Official release of the WST Exposure Time Calculator.',
+                        'Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer).',
+                    ],
+                },
             ],
         }
         
@@ -281,10 +316,13 @@ class WST(ETC):
             self._info([ins])
 
     def get_release_info(self):
+        history = list(self.release_info.get('history', []))
+        latest_changes = list(history[0]['changes']) if history else []
         return {
             'version': self.release_info.get('version', PACKAGE_VERSION),
             'release_date': self.release_info.get('release_date', ''),
-            'changelog': list(self.release_info.get('changelog', [])),
+            'changelog': latest_changes,
+            'history': history,
         }
 
 # # # # # # # MORE # # # # # #
