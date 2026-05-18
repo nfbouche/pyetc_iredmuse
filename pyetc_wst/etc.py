@@ -270,8 +270,8 @@ class ETC:
             raise ValueError(f"Invalid spatial distribution: {fo['Obj_Spat_Dis']} \n Allowed values are 'sb', 'resolved', 'ps'")
         if fo['Obj_Spat_Dis'] == 'resolved' and fo['IMA'] not in ('moffat', 'sersic', None):
             raise ValueError(f"Invalid image type (for resolved case): {fo['IMA']} \n Allowed values are 'moffat', 'sersic'")       
-        if fo['MAG_SYS'] not in ('AB', 'Vega'):
-            raise ValueError(f"Invalid SED type: {fo['MAG_SYS']} \n Allowed values are 'AB', 'Vega'")
+        if fo['Obj_SED'] != 'line' and fo.get('OBJ_MAG') is not None and fo['MAG_SYS'] not in ('AB', 'Vega'):
+            raise ValueError(f"Invalid MAG_SYS: {fo['MAG_SYS']} \n Allowed values are 'AB', 'Vega'")
 
         # we compute the sky configuration/or take it from the static files, 
         # the sky spectrum is already convoluted for the LSF

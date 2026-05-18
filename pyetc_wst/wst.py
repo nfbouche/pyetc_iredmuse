@@ -45,6 +45,7 @@ class WST(ETC):
                         'SNR values now displayed in bold in the computation results panel.',
                         'Plot titles and trace names corrected: "x spectral pixel/coadding" replaced with "/ spectral pixel/coadding" throughout the web interface.',
                         'Removed invalid PWV value 0.01 from the allowed grid (SkyCalc minimum is 0.05); previously this caused SkyCalc to reject the entire request.',
+                        'Fixed false MAG_SYS validation error raised for emission-line sources (Obj_SED="line"): the check is now skipped when the SED type is "line" or OBJ_MAG is None, since magnitude normalisation is not used in those cases.',
                     ],
                 },
                 {
