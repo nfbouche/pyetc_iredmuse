@@ -261,12 +261,42 @@ class SEDModels:
     @staticmethod
     def _resolve_template_path(filename):
         if os.path.dirname(filename):
+            if os.path.exists(filename):
+                return filename
+            root, ext = os.path.splitext(filename)
+            if ext.lower() == '.dat':
+                alt = root + '.sed'
+                if os.path.exists(alt):
+                    return alt
+            elif ext.lower() == '.sed':
+                alt = root + '.dat'
+                if os.path.exists(alt):
+                    return alt
             return filename
         else:
             # Takes the directory of the current file (specalib.py)
             base_dir = os.path.dirname(__file__)
             template_dir = os.path.join(base_dir, 'ESO_original_spectra')
-            return os.path.join(template_dir, filename)
+            candidate = os.path.join(template_dir, filename)
+            if os.path.exists(candidate):
+                return candidate
+
+            root, ext = os.path.splitext(candidate)
+            if ext.lower() == '.dat':
+                alt = root + '.sed'
+                if os.path.exists(alt):
+                    return alt
+            elif ext.lower() == '.sed':
+                alt = root + '.dat'
+                if os.path.exists(alt):
+                    return alt
+            elif ext == '':
+                for suffix in ('.dat', '.sed'):
+                    alt = candidate + suffix
+                    if os.path.exists(alt):
+                        return alt
+
+            return candidate
         
     @classmethod
     def template(cls, filename, waveunit='AA', unitsf='Fll'):

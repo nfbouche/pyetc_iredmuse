@@ -32,8 +32,26 @@ class WST(ETC):
         self.throughput_model_version = '09/03/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '14 May 2026',
+            'release_date': '28 May 2026',
             'history': [
+                {
+                    'version': '1.4',
+                    'label': 'Version 1.4',
+                    'release_date': '28 May 2026',
+                    'changes': [
+                        'Added GLAO (Ground Layer Adaptive Optics) support: new GLAO=True parameter in the obs dictionary enables a wavelength-dependent IQ formula for IFS (IQ_glao(λ) = (A·λ_nm² + B·λ_nm + C)·AM^0.6, A=1.22465e-7, B=-0.000576386, C=0.717164), and overrides the natural seeing to 0.8 arcsec average for MOS.',
+                        'Moffat beta updated: default (non-AO) changed from 2.50 to 2.80; IFS-GLAO uses beta=2.5.',
+                        'Added 25 SWIRE galaxy/AGN spectral templates: ellipticals (Ell2/5/13), spirals (Sa/Sb/Sc/Sd/Sdm/S0/Spi4), starbursts (M82/N6090/N6240/Arp220/I19254/I20551/I22491), Seyferts (Sey18/Sey2), QSOs (QSO1/QSO2/BQSO1/TQSO1/Mrk231), and Torus.',
+                        'Added snr_in_window(res, lam1, lam2, dlbda, unit, stat) utility function: computes median or mean SNR (per spectral pixel) inside a spectral window from a snr_from_source result.',
+                        'Added ETC.time_from_source_window(ins, ima, spec, lam1, lam2, target_snr, unit, compute, n_iter) method: iteratively finds the DIT or NDIT required to reach a target median SNR (per spectral pixel) within a user-defined wavelength window [λ1, λ2]. Returns ndit_raw (pre-ceil float) alongside the ceiled integer.',
+                        'NDIT rounding unified to ceil across all compute paths (dit_snr, best, time_from_source_window): max(1, int(np.ceil(...))) — if 7.1 exposures are needed, result is always 8.',
+                        'Web interface: added GLAO toggle, spectral window inputs (λ1/λ2) for window-based exposure time computation, improved ASCII/JSON config downloads with timestamped filenames, GLAO/SNR_WIN/LAM_WIN1/LAM_WIN2 included in saved config, SNR window shown in input summary instead of reference wavelength, and consistent NDIT rounding messages showing "X.XXXX, updating to Y for computation." in all paths.',
+                        'time_from_source_window convergence improved: max iterations raised to 20, convergence criterion changed to SNR-relative tolerance 1e-4 (0.01%), NDIT sub-1 case exits after one exact analytical step, no artificial floor on param_val during iteration.',
+                        'API JSON response: snr_window field added when SNR_WIN=True, reporting median_snr_pixel and (if COADD_WL>1) median_snr_rebin in the requested wavelength window.',
+                        'Web results: window mode now shows both rebinned and per-pixel median SNR (when COADD_WL>1) in all compute modes (dit_snr, ndit_snr, best), consistent with non-window behaviour.',
+                        'Emission line source (Obj_SED="line"): SNR spectral window is now automatically overridden in all compute modes (DIT/NDIT, DIT&SNR, NDIT&SNR, Best) — SNR_WIN is forced to False and the line central wavelength (SEL_CWAV) is always used as the sole reference. A debug message is emitted when the override occurs. The web interface hides and unchecks the SNR window controls whenever SED type is set to "line".',
+                    ],
+                },
                 {
                     'version': '1.3',
                     'label': 'Version 1.3',
@@ -90,7 +108,14 @@ class WST(ETC):
                             'ifs': 0.1, # average FWHM on 95% FOV as also used in the WST_IFS_Tradeoff_Matrix. Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2008
                             'mos': 0.1875,
                             }
-                        )        
+                        )
+
+        # ------- GLAO parameters -----------
+        self.glao = dict(
+            ifs_beta=2.5,          # Moffat beta for IFS+GLAO (AO-corrected PSF profile)
+            mos_seeing=0.8,        # Fixed seeing override for MOS+GLAO (Paranal median, zenith, 5000 Å)
+        )
+
         # ------- IFS -----------
         self.ifs = {} 
         self.ifs['channels'] = ['blue', 'red']
@@ -101,7 +126,7 @@ class WST(ETC):
                               type = 'IFS',
                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
-                              iq_beta = 2.50, # beta PSF of telescope + instrument
+                              iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                               spaxel_size = 0.25, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                               dlbda = 0.48, # Angstroem/pixel, previously 0.5, updated on 03/03/2026
                               lbda1 = 3700, # starting wavelength in Angstroem
@@ -120,7 +145,7 @@ class WST(ETC):
                                type='IFS',
                                iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                                iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
-                               iq_beta = 2.50, # beta PSF of telescope + instrument
+                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                spaxel_size = 0.25, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 0.64, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 6200, # starting wavelength in Angstroem
@@ -145,7 +170,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.1515 , # spaxel size in arcsec, previously 0.208, updated on 03/03/2026
                                 aperture = 1.03, # fiber diameter in arcsec 
                                 dlbda = 0.206, # Angstroem/pixel, previously 0.256, updated on 03/03/2026
@@ -165,7 +190,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.1515 , # spaxel size in arcsec, previously 0.208, updated on 03/03/2026
                                 aperture = 1.03, # fiber diameter in arcsec
                                 dlbda = 0.266, # Angstroem/pixel, previously 0.352, updated on 03/03/2026
@@ -185,7 +210,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.1515, # spaxel size in arcsec, previously 0.208, updated on 03/03/2026
                                 aperture = 1.03, # fiber diameter in arcsec
                                 dlbda = 0.344, # Angstroem/pixel, previously 0.352, updated on 03/03/2026
@@ -205,7 +230,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.20, # fwhm PSF of instrument, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.1515, # spaxel size in arcsec, previously 0.208, updated on 03/03/2026
                                 aperture = 1.03, # fiber diameter in arcsec
                                 dlbda = 0.362, # Angstroem/pixel, previously 0.486, updated on 03/03/2026
@@ -229,7 +254,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.0925, # spaxel size in arcsec, updated on 03/03/2026
                                 aperture = 1.00, # fiber diameter in arcsec
                                 dlbda = 0.027, # Angstroem/pixel, updated on 03/03/2026
@@ -249,7 +274,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.0925, # spaxel size in arcsec, updated on 03/03/2026
                                 aperture = 1.00, # fiber diameter in arcsec
                                 dlbda = 0.032, # Angstroem/pixel, updated on 03/03/2026
@@ -269,7 +294,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.0925, # spaxel size in arcsec, updated on 03/03/2026
                                 aperture = 1.00, # fiber diameter in arcsec
                                 dlbda = 0.043, # Angstroem/pixel, updated on 03/03/2026
@@ -289,7 +314,7 @@ class WST(ETC):
                                 type = 'MOS',
                                 iq_fwhm_tel = self.tel['iq_fwhm_ins']['mos'], # fwhm PSF of telescope, updated on 03/03/2026
                                 iq_fwhm_ins = 0.16, # fwhm PSF of instrument, updated on 03/03/2026
-                                iq_beta = 2.50, # beta PSF of telescope + instrument
+                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                 spaxel_size = 0.0925, # spaxel size in arcsec, updated on 03/03/2026
                                 aperture = 1.00, # fiber diameter in arcsec
                                 dlbda = 0.048, # Angstroem/pixel, updated on 03/03/2026

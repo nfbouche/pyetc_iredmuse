@@ -66,7 +66,8 @@ __all__ = [
     'convolve_and_center',
     'plot_noise_components',
     'simulate_counts',
-    'simulate_counts_vectorized'
+    'simulate_counts_vectorized',
+    'snr_in_window',
 ]
 
 class ETC:
@@ -80,6 +81,13 @@ class ETC:
     
     # Class-level skycalc cache: key = (airmass, pwv, mss, ins, ch, lbda1, lbda2)
     _skycalc_cache = {}
+    # Broad master sky cache: key = sky conditions only (no channel)
+    # Stores (flux_arr, trans_arr, wmin_aa, wstep_aa) over the full WST range.
+    _skycalc_broad_cache = {}
+    # Broad download parameters (cover all WST channels: 3700–11000 Å)
+    _BROAD_WMIN_NM  = 369.0   # nm  — small buffer below IFS blue (3700 Å)
+    _BROAD_WMAX_NM  = 1101.0  # nm  — small buffer above MOS LR red (~11000 Å)
+    _BROAD_WDELTA_NM = 0.005  # nm  = 0.05 Å/point; needed for MOS-HR LSF convolutions
 
     def __init__(self, log=logging.INFO):
         self.logger = logging.getLogger(__name__)
@@ -183,6 +191,7 @@ class ETC:
             CH=fo.get("CH", None),
 
             seeing=fo.get("SEE", None),
+            seeing_input=fo.get("SEE", None),   # original user value, never overridden
             ndit=fo.get("NDIT", None),
             dit=fo.get("DIT", None),
             spec_type=dummy_type,
@@ -204,6 +213,9 @@ class ETC:
 
             snr=fo.get("SNR", None),
             snr_wave=fo.get("Lam_Ref", None),
+            snr_range=fo.get("SNR_RANGE", False),
+            lam_win1=fo.get("LAM_WIN1", None),
+            lam_win2=fo.get("LAM_WIN2", None),
 
             disp=fo.get('OBJ_FIB_DISP', None),
 
@@ -228,9 +240,40 @@ class ETC:
             sersic_reff=fo.get("Sersic_Reff", None),
             sersic_ind=fo.get("Sersic_Ind", None),
 
+            glao=fo.get("GLAO", False),
+
             upload_wave=None,
             upload_flux=None
         )
+
+        # GLAO handling: override seeing and PSF beta
+        if obs['glao']:
+            ins_name = fo.get("INS", "")
+            if ins_name in ('moslr', 'moshr'):
+                # MOS + GLAO: use the standard seeing formula (Kolb/VK) but force
+                # seeing to the value in self.glao['mos_seeing'] (set in wst.py, default 0.8 arcsec).
+                # The user-supplied seeing value is ignored.
+                # Moffat beta stays at the instrument default (2.80).
+                mos_seeing = getattr(self, 'glao', {}).get('mos_seeing', 0.8)
+                obs['seeing'] = mos_seeing
+                obs['glao_seeing_note'] = (
+                    f"MOS+GLAO: user seeing ({obs['seeing_input']}\") ignored; "
+                    f"fixed to {mos_seeing}\" (Paranal median, zenith, 5000 Å); beta=2.80"
+                )
+                self.logger.info("GLAO active (MOS): user seeing ignored, fixed to %.2f arcsec "
+                                 "(Paranal median at zenith, 5000 Å); Moffat beta = 2.80", mos_seeing)
+            else:
+                # IFS + GLAO: the GLAO polynomial formula is used (see get_seeing_fwhm),
+                # which is a function of wavelength and airmass only.
+                # The user-supplied seeing value is completely ignored.
+                # Moffat beta read from self.glao['ifs_beta'] (set in wst.py), fallback 2.5.
+                obs['glao_iq_beta'] = getattr(self, 'glao', {}).get('ifs_beta', 2.5)
+                obs['glao_seeing_note'] = (
+                    f"IFS+GLAO: user seeing ({obs['seeing_input']}\") ignored; "
+                    "IQ from GLAO polynomial IQ(λ,AM); beta=2.5"
+                )
+                self.logger.info("GLAO active (IFS): user seeing ignored, wavelength-dependent "
+                                 "GLAO IQ formula applied; Moffat beta = 2.5")
 
         # Read spectrum from file if upload SED type
         if fo['Obj_SED'] == 'upload':
@@ -468,67 +511,84 @@ class ETC:
                 conf['dlbda']
             )
 
-            # Check cache
+            # Check per-channel cache first
             if cache_key in ETC._skycalc_cache:
                 return ETC._skycalc_cache[cache_key]
-            eps = 1
-            wmin_nm = (conf['lbda1'] / 10) - eps
-            wmax_nm = (conf['lbda2'] / 10) + eps
-            wdelta_nm = conf['dlbda'] / 10
-            # Enforce documented wavelength-grid constraints.
-            wmin_nm = float(np.clip(wmin_nm, 300.0, 30000.0))
-            wmax_nm = float(np.clip(wmax_nm, 300.0, 30000.0))
-            if wmax_nm <= wmin_nm:
-                wmax_nm = min(30000.0, wmin_nm + 1.0)
-                adjustments.append("Adjusted wavelength bounds to satisfy wmin < wmax")
-            wdelta_nm = float(max(1e-6, wdelta_nm))
-            skycalc_params['wmin'] = wmin_nm
-            skycalc_params['wmax'] = wmax_nm
-            skycalc_params['wdelta'] = wdelta_nm
-            skycalc_params['wgrid_mode'] = 'fixed_wavelength_step'
 
-            # Use skycalc_cli (official ESO CLI) to query the SkyCalc server.
-            # SkyModel.data is raw bytes; wrap in BytesIO for astropy Table.read.
-            _skm = _SkyCLIModel()
-            _skm.stop_on_errors_and_exceptions = False
-            _skm.callwith(skycalc_params)
-            if _skm.data is None:
-                # Last-resort fallback: disable moon component and retry.
-                adjustments.append(
-                    "SkyCalc rejected parameters; retried with incl_moon='N' for robustness"
-                )
-                obs['skycalc_adjustments'] = adjustments
-                skycalc_params['incl_moon'] = 'N'
-                skycalc_params['moon_target_sep'] = 45.0
-                skycalc_params['moon_alt'] = 45.0
+            # Build broad_key (sky conditions only, no channel geometry)
+            broad_key = (
+                round(airmass, 4),
+                pwv,
+                round(mss, 2),
+                round(moon_target_sep, 2),
+                round(moon_alt, 2),
+                include_moon,
+            )
+
+            if broad_key not in ETC._skycalc_broad_cache:
+                # Download broad master sky covering the full WST wavelength range
+                broad_params = dict(skycalc_params)
+                broad_params['wmin']       = ETC._BROAD_WMIN_NM
+                broad_params['wmax']       = ETC._BROAD_WMAX_NM
+                broad_params['wdelta']     = ETC._BROAD_WDELTA_NM
+                broad_params['wgrid_mode'] = 'fixed_wavelength_step'
+
                 _skm = _SkyCLIModel()
                 _skm.stop_on_errors_and_exceptions = False
-                _skm.callwith(skycalc_params)
+                _skm.callwith(broad_params)
                 if _skm.data is None:
-                    raise RuntimeError(
-                        f"SkyCalc server rejected request for AM={airmass}, FLI={fli}, "
-                        f"MOON_SEP={moon_target_sep}, moon_alt={moon_alt:.2f}."
+                    # Last-resort fallback: disable moon component and retry.
+                    adjustments.append(
+                        "SkyCalc rejected parameters; retried with incl_moon='N' for robustness"
                     )
-                obs['incl_moon_effective'] = 'N'
-                obs['moon_target_sep_effective'] = 45.0
-                obs['moon_alt_effective'] = 45.0
-                obs['skycalc_adjustments'] = adjustments
-            tab = Table.read(BytesIO(_skm.data), format='fits')
-            if tab['lam'].unit is None:
-                tab['lam'].unit = u.nm
+                    obs['skycalc_adjustments'] = adjustments
+                    broad_params['incl_moon'] = 'N'
+                    broad_params['moon_target_sep'] = 45.0
+                    broad_params['moon_alt'] = 45.0
+                    _skm = _SkyCLIModel()
+                    _skm.stop_on_errors_and_exceptions = False
+                    _skm.callwith(broad_params)
+                    if _skm.data is None:
+                        raise RuntimeError(
+                            f"SkyCalc rejected request for AM={airmass}, FLI={fli}, "
+                            f"MOON_SEP={moon_target_sep}, moon_alt={moon_alt:.2f}."
+                        )
+                    obs['incl_moon_effective'] = 'N'
+                    obs['moon_target_sep_effective'] = 45.0
+                    obs['moon_alt_effective'] = 45.0
+                    obs['skycalc_adjustments'] = adjustments
 
-            start = tab['lam'][0]*10
-            step = (tab['lam'][1]-tab['lam'][0])*10
-            wave = WaveCoord(cdelt=step, crval=start, cunit=u.angstrom)
+                tab = Table.read(BytesIO(_skm.data), format='fits')
+                if tab['lam'].unit is None:
+                    tab['lam'].unit = u.nm
 
-            d_emi = Spectrum(data=tab['flux'], wave=wave)
-            d_emi_lsfpix = d_emi.filter(width=conf['lsfpix'])
-            d_emi_lsfpix = d_emi_lsfpix.resample(conf['dlbda'], start=conf['lbda1'], shape=int((conf['lbda2'] - conf['lbda1']) / conf['dlbda']) + 1)
-            
-            d_abs = Spectrum(data=tab['trans'], wave=wave)
-            d_abs = d_abs.resample(conf['dlbda'], start=conf['lbda1'], shape=int((conf['lbda2'] - conf['lbda1']) / conf['dlbda']) + 1)
-    
-            # Cache the result
+                wmin_aa  = float(tab['lam'][0]) * 10
+                wstep_aa = float(tab['lam'][1] - tab['lam'][0]) * 10
+                ETC._skycalc_broad_cache[broad_key] = (
+                    np.array(tab['flux']),
+                    np.array(tab['trans']),
+                    wmin_aa,
+                    wstep_aa,
+                )
+
+            flux_arr, trans_arr, wmin_aa, wstep_aa = ETC._skycalc_broad_cache[broad_key]
+
+            # Build master Spectrum objects from the cached broad arrays
+            master_wave  = WaveCoord(cdelt=wstep_aa, crval=wmin_aa, cunit=u.angstrom)
+            d_emi_master = Spectrum(data=flux_arr.copy(), wave=master_wave)
+            d_abs_master = Spectrum(data=trans_arr.copy(), wave=master_wave)
+
+            # Scale lsfpix from channel pixels to master pixels
+            lsf_fwhm_aa   = conf['lsfpix'] * conf['dlbda']   # LSF FWHM in Å
+            lsfpix_master = max(0.5, lsf_fwhm_aa / wstep_aa)
+
+            d_emi_lsfpix = d_emi_master.filter(width=lsfpix_master)
+            shape = int((conf['lbda2'] - conf['lbda1']) / conf['dlbda']) + 1
+            d_emi_lsfpix = d_emi_lsfpix.resample(conf['dlbda'], start=conf['lbda1'], shape=shape)
+
+            d_abs = d_abs_master.resample(conf['dlbda'], start=conf['lbda1'], shape=shape)
+
+            # Cache per-channel result
             ETC._skycalc_cache[cache_key] = (d_emi_lsfpix, d_abs)
 
             return d_emi_lsfpix, d_abs
@@ -727,12 +787,17 @@ class ETC:
             iq : float or np.ndarray
                 FWHM(s) used for PSF(s)
         """
+        glao = self.obs.get('glao', False)
+        use_glao_formula = glao and ins.get('type') == 'IFS'
+        iq_beta_eff = self.obs.get('glao_iq_beta', ins['iq_beta']) if use_glao_formula else ins['iq_beta']
         wave_tuple = tuple(np.atleast_1d(wave))
+        # seeing is not used by the GLAO formula (IFS) so it may legitimately be None
+        seeing_key = round(self.obs['seeing'], 4) if self.obs['seeing'] is not None else None
         cache_key = (
-            round(self.obs['seeing'], 4),
+            seeing_key,
             round(self.obs['airmass'], 4),
-            ins['name'], ins['spaxel_size'], ins['iq_beta'],
-            wave_tuple, uneven
+            ins['name'], ins['spaxel_size'], iq_beta_eff,
+            wave_tuple, uneven, use_glao_formula
         )
         
         if cache_key in ETC._psf_cache:
@@ -744,18 +809,20 @@ class ETC:
             wave,
             self.tel['diameter'],
             ins['iq_fwhm_tel'],
-            ins['iq_fwhm_ins']
+            ins['iq_fwhm_ins'],
+            glao=use_glao_formula
         )
 
-        if np.isscalar(iq):
-            ima = moffat(ins['spaxel_size'], iq, ins['iq_beta'], uneven=uneven)
+        iq_arr = np.atleast_1d(iq)
+        if iq_arr.size == 1:
+            ima = moffat(ins['spaxel_size'], float(iq_arr[0]), iq_beta_eff, uneven=uneven)
             ima.data /= ima.data.sum()
             ima.oversamp = 10
             result = ima
         else:
             ima_arr = []
-            for val in iq:
-                ima = moffat(ins['spaxel_size'], val, ins['iq_beta'], uneven=uneven)
+            for val in iq_arr:
+                ima = moffat(ins['spaxel_size'], float(val), iq_beta_eff, uneven=uneven)
                 ima.data /= ima.data.sum()
                 ima.oversamp = 10
                 ima_arr.append(ima)
@@ -1086,7 +1153,8 @@ class ETC:
             wave,
             self.tel['diameter'],
             ins['iq_fwhm_tel'],
-            ins['iq_fwhm_ins']
+            ins['iq_fwhm_ins'],
+            glao=self.obs.get('glao', False)
         )
         if not np.isscalar(fwhm):
             fwhm = float(fwhm.ravel()[0])
@@ -1127,7 +1195,8 @@ class ETC:
         # Initial guess from PSF FWHM
         fwhm_ref, _ = get_seeing_fwhm(
             obs['seeing'], obs['airmass'], wave_ref,
-            self.tel['diameter'], ins['iq_fwhm_tel'], ins['iq_fwhm_ins']
+            self.tel['diameter'], ins['iq_fwhm_tel'], ins['iq_fwhm_ins'],
+            glao=obs.get('glao', False)
         )
         if not np.isscalar(fwhm_ref):
             fwhm_ref = float(fwhm_ref.ravel()[0])
@@ -1955,6 +2024,60 @@ class ETC:
         if compute not in ['dit', 'ndit', 'best']:
             raise ValueError("Parameter 'compute' must be one of: 'dit', 'ndit', 'best'")
 
+        obs = self.obs
+
+        # SNR_RANGE mode: target median SNR in a wavelength window [lam_win1, lam_win2]
+        # instead of at a single reference wavelength (snr_wave).
+        # Only for non-line sources; lines always fall through to the standard path below.
+        if obs.get('snr_range') and obs['spec_type'] != 'line':
+            lam_w1 = obs.get('lam_win1')
+            lam_w2 = obs.get('lam_win2')
+            if lam_w1 is None or lam_w2 is None:
+                return {'message': 'SNR_RANGE=True but LAM_WIN1 / LAM_WIN2 not set.'}
+            lam_w1, lam_w2 = float(min(lam_w1, lam_w2)), float(max(lam_w1, lam_w2))
+            lbda1, lbda2 = ins['lbda1'], ins['lbda2']
+            # Three-case range validation
+            if lam_w2 < lbda1 or lam_w1 > lbda2:
+                msg = (
+                    f'SNR window [{lam_w1:.0f}–{lam_w2:.0f} Å] is completely outside '
+                    f'instrument range [{lbda1:.0f}–{lbda2:.0f} Å].'
+                )
+                if debug:
+                    self.logger.debug(msg)
+                return {'message': msg}
+            clip_note = None
+            if lam_w1 < lbda1 or lam_w2 > lbda2:
+                orig_w1, orig_w2 = lam_w1, lam_w2
+                lam_w1 = max(lam_w1, lbda1)
+                lam_w2 = min(lam_w2, lbda2)
+                clip_note = (
+                    f'SNR window [{orig_w1:.0f}–{orig_w2:.0f} Å] partially outside range, '
+                    f'clipped to [{lam_w1:.0f}–{lam_w2:.0f} Å].'
+                )
+                if debug:
+                    self.logger.debug(clip_note)
+            _compute = 'ndit' if compute == 'best' else compute
+            spbin = int(obs.get('spbin') or 1)
+            if obs.get('snr') is None:
+                return {'message': 'SNR_RANGE=True but SNR target not set.'}
+            effective_snr = float(obs['snr']) / np.sqrt(spbin) if spbin > 1 else float(obs['snr'])
+            if debug:
+                self.logger.debug(
+                    f"SNR_RANGE mode: window=[{lam_w1:.0f}–{lam_w2:.0f} Å], "
+                    f"compute='{_compute}', target SNR={obs['snr']}, "
+                    f"spbin={spbin}, effective target={effective_snr:.4f}"
+                )
+            try:
+                res = self.time_from_source_window(
+                    ins, ima, spec, lam_w1, lam_w2, effective_snr,
+                    compute=_compute, debug=debug
+                )
+            except (RuntimeError, ValueError, TypeError) as e:
+                return {'message': str(e)}
+            if clip_note:
+                res['clip_note'] = clip_note
+            return res
+
         # we check that the line is inside the instrument range
         if self.obs['spec_type'] == 'line':
             if (ins['lbda1'] > self.obs['wave_line_center'] - tol_wave * self.obs['wave_line_fwhm']) or (ins['lbda2'] < self.obs['wave_line_center'] + tol_wave * self.obs['wave_line_fwhm']):
@@ -2501,12 +2624,181 @@ class ETC:
         if debug:
             self.logger.debug(f"Total processing time: {end_time - start_time} seconds")
         return res
-        
+
+    # # # # # # # # # # # # # # # # # # #
+    # # # # SPECTRAL WINDOW TOOLS  # # # #
+    # # # # # # # # # # # # # # # # # # #
+
+    def time_from_source_window(self, ins, ima, spec, lam1, lam2,
+                                target_snr, unit='pixel', compute='ndit',
+                                n_iter=20, debug=True):
+        """Find the DIT or NDIT that achieves a target *median* SNR in a
+        spectral window [lam1, lam2].
+
+        This is an iterative wrapper around :meth:`snr_from_source` that
+        scales the exposure parameter quadratically until the median SNR in
+        the requested wavelength window converges to ``target_snr``.
+
+        Parameters
+        ----------
+        ins : dict
+            Instrument configuration dict (e.g. ``wst.ifs['blue']``).
+        ima : MPDAF image or None
+            Source image (None for sb/ps).
+        spec : MPDAF spectrum
+            Source spectrum.
+        lam1 : float
+            Start wavelength of the window (Angstrom).
+        lam2 : float
+            End wavelength of the window (Angstrom).
+        target_snr : float
+            Desired median SNR inside the window.
+        unit : str
+            ``'pixel'`` — SNR per spectral pixel (default and only supported option).
+        compute : str
+            ``'ndit'`` — fix DIT, find NDIT (default).
+            ``'dit'``  — fix NDIT, find DIT.
+        n_iter : int
+            Maximum number of scaling iterations (default 20).
+        debug : bool
+            Log iteration details (default True).
+
+        Returns
+        -------
+        dict with keys:
+            - ``'ndit'`` or ``'dit'``: the required value (int for NDIT, float for DIT)
+            - ``'median_snr'``: achieved median SNR in the window
+            - ``'lam1'``, ``'lam2'``: the wavelength window used
+            - ``'unit'``: SNR unit used (always ``'pixel'``)
+            - ``'res'``: the full :meth:`snr_from_source` result for the final iteration
+        """
+        obs = self.obs
+        dlbda = float(ins.get('dlbda', 1.0))
+
+        if unit != 'pixel':
+            raise ValueError("Only unit='pixel' is supported")
+
+        if compute == 'ndit':
+            param_key = 'ndit'
+            param_start = max(1, float(obs.get('ndit') or 1))
+        elif compute == 'dit':
+            param_key = 'dit'
+            param_start = max(0.1, float(obs.get('dit') or 600))
+        else:
+            raise ValueError(f"compute must be 'ndit' or 'dit', got '{compute}'")
+
+        param_val = param_start
+        res = None
+        med = None
+
+        for i in range(n_iter):
+            obs[param_key] = max(1, int(round(param_val))) if compute == 'ndit' else max(0.1, float(param_val))
+            res = self.snr_from_source(ins, ima, spec, debug=False)
+            if 'message' in res:
+                raise RuntimeError(f"snr_from_source error: {res['message']}")
+            med = snr_in_window(res, lam1, lam2, dlbda=dlbda, unit=unit)
+            if med is None or med <= 0:
+                raise ValueError(f"No valid SNR data in window [{lam1}–{lam2}] Å")
+            scale = (target_snr / med) ** 2
+            new_val = param_val * scale
+            if compute == 'dit':
+                new_val = max(0.1, new_val)
+            if debug:
+                self.logger.debug(
+                    f"  iter {i+1}: {param_key}={obs[param_key]}, "
+                    f"median SNR/{unit}={med:.3f}, scale={scale:.4f} → {param_key}={new_val:.6f}"
+                )
+            param_val = new_val
+            # NDIT sub-1: pinned at obs=1 every iteration — one analytical step is exact
+            if compute == 'ndit' and param_val < 1.0:
+                break
+            # Converged: SNR within 0.01% of target
+            if abs(med - target_snr) / target_snr < 1e-4:
+                break
+
+        # Final value
+        param_val_raw = param_val
+        obs[param_key] = max(1, int(np.ceil(param_val))) if compute == 'ndit' else float(param_val)
+        if debug and compute == 'ndit' and abs(param_val_raw - obs[param_key]) > 0.01:
+            self.logger.debug(
+                f"  NDIT: {param_val_raw:.2f} → ceiled to {obs[param_key]}"
+            )
+        res = self.snr_from_source(ins, ima, spec, debug=debug)
+        if 'message' in res:
+            raise RuntimeError(f"snr_from_source error: {res['message']}")
+        med = snr_in_window(res, lam1, lam2, dlbda=dlbda, unit=unit)
+
+        if debug:
+            self.logger.debug(
+                f"  → Required {param_key}: {obs[param_key]}, "
+                f"achieved median SNR/{unit} in [{lam1}–{lam2}] Å: {med:.3f}"
+            )
+
+        result = {
+            param_key: obs[param_key],
+            'median_snr': med,
+            'lam1': lam1,
+            'lam2': lam2,
+            'unit': unit,
+            'res': res
+        }
+        if compute == 'ndit':
+            result['ndit_raw'] = param_val_raw
+        return result
+
 # # # # # # # # # # # # # # # #
 # # # # GENERAL METHODS # # # #
 # # # # # # # # # # # # # # # #
 
 # function to get the static sky tables & the tel.+inst. transmission curves, they should always be present in the right directory
+def snr_in_window(res, lam1, lam2, dlbda=None, unit='pixel', stat='median'):
+    """Compute a summary statistic of the SNR inside a spectral window.
+
+    Parameters
+    ----------
+    res : dict
+        Result dictionary returned by :meth:`ETC.snr_from_source`.
+    lam1 : float
+        Start wavelength of the window in Angstrom.
+    lam2 : float
+        End wavelength of the window in Angstrom.
+    dlbda : float or None
+        Dispersion in Å/pixel (kept for backward compatibility; not used).
+    unit : str
+        ``'pixel'`` — return SNR per spectral pixel (default and only supported option).
+    stat : str
+        Summary statistic: ``'median'`` (default) or ``'mean'``.
+
+    Returns
+    -------
+    float or None
+        The requested statistic of the SNR values inside the window,
+        or *None* if no data fall within [lam1, lam2].
+    """
+    try:
+        snr_spec = res['spec']['snr']
+        wave = snr_spec.wave.coord()
+        snr_data = snr_spec.data.data
+    except (KeyError, AttributeError):
+        return None
+
+    mask = (wave >= lam1) & (wave <= lam2)
+    if not np.any(mask):
+        return None
+
+    vals = snr_data[mask].astype(float)
+
+    if unit != 'pixel':
+        raise ValueError("Only unit='pixel' is supported")
+
+    if stat == 'median':
+        return float(np.nanmedian(vals))
+    elif stat == 'mean':
+        return float(np.nanmean(vals))
+    else:
+        raise ValueError(f"stat must be 'median' or 'mean', got '{stat}'")
+
+
 def get_data(obj, chan, name, skydir, transdir):
     """ retrieve instrument data from the associated setup files
 
@@ -2686,13 +2978,13 @@ def _checkobs(obs, keys):
     return
 
 # seeing computation function, fwhm at a specific wavelength/array of wavelengths
-def get_seeing_fwhm(seeing, airmass, wave, diam, iq_tel, iq_ins):
+def get_seeing_fwhm(seeing, airmass, wave, diam, iq_tel, iq_ins, glao=False):
     """ compute FWHM for the Paranal ESO ETC model
 
     Parameters
     ----------
     seeing : float
-        seeing (arcsec) at 5000A
+        seeing (arcsec) at 5000A — ignored when glao=True (IFS GLAO formula used)
     airmass : float
         airmass of the observation
     wave : numpy array of float
@@ -2703,6 +2995,14 @@ def get_seeing_fwhm(seeing, airmass, wave, diam, iq_tel, iq_ins):
         image quality of the telescope
     iq_ins : float of numpy array
         image quality of the instrument
+    glao : bool
+        if True, use the GLAO IQ formula instead of the natural-seeing model.
+        The IFS GLAO delivered IQ (arcsec) as a function of wavelength is:
+          IQ_glao(wave) = (A * wave_nm^2 + B * wave_nm + C) * AM^0.6
+        where wave_nm is the wavelength in nanometres,
+        A = 1.22465e-7, B = -0.000576386, C = 0.717164.
+        This formula already accounts for the average atmospheric correction;
+        the 'seeing' argument is not used.
 
     Returns
     -------
@@ -2710,13 +3010,28 @@ def get_seeing_fwhm(seeing, airmass, wave, diam, iq_tel, iq_ins):
         FWHM (arcsec) as function of wavelengths
 
     """
-    
-    # from ESPRESSO (Schmidt+24)
-    r0 = 0.1*seeing**(-1)*(wave/5000)**(1.2)*airmass**(-0.6) 
-    l0 = 46 # for VLT (in ETC)
 
-    Fkolb = 1/(1+300*diam/l0)-1
-    iq_atm = seeing*(wave/5000)**(-1/5)*airmass**(3/5) * np.sqrt(1+Fkolb*2.183*(r0/l0)**0.356)
+    if glao:
+        # GLAO delivered image quality (IFS mode).
+        # Quadratic polynomial fit in wave_nm (wavelength in nanometres).
+        # Coefficients from WST GLAO model.
+        # The 'seeing' argument is intentionally ignored here.
+        import logging as _logging
+        _logging.getLogger(__name__).debug(
+            "get_seeing_fwhm: GLAO active — user seeing (%s) ignored, using GLAO polynomial",
+            seeing
+        )
+        A_glao, B_glao, C_glao = 1.22465e-7, -0.000576386, 0.717164
+        wave_nm = np.atleast_1d(wave).astype(float) / 10.0   # Å → nm
+        iq_atm = (A_glao * wave_nm**2 + B_glao * wave_nm + C_glao) * airmass**0.6
+        iq_atm = np.maximum(iq_atm, 0.05)  # physical safety floor
+    else:
+        # from ESPRESSO (Schmidt+24)
+        r0 = 0.1*seeing**(-1)*(wave/5000)**(1.2)*airmass**(-0.6)
+        l0 = 46 # for VLT (in ETC)
+
+        Fkolb = 1/(1+300*diam/l0)-1
+        iq_atm = seeing*(wave/5000)**(-1/5)*airmass**(3/5) * np.sqrt(1+Fkolb*2.183*(r0/l0)**0.356)
 
     iq = np.sqrt(iq_atm**2 + iq_tel**2 + iq_ins**2)
     iq_before_ins = np.sqrt(iq_atm**2 + iq_tel**2)
