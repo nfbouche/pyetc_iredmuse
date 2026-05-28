@@ -18,11 +18,11 @@ Exposure Time Calculator (ETC) for the Wide-Field Spectroscopic Telescope (WST).
 - scipy >= 1.7.0
 - matplotlib >= 3.3.0
 - astropy >= 5.0.0
-- mpdaf >= 3.6.0
+- mpdaf >= 3.5.0
 - skycalc_cli
 
 ```
-pip install "numpy>=1.20.0" "scipy>=1.7.0" "matplotlib>=3.3.0" "astropy>=5.0.0" "mpdaf>=3.6.0" "skycalc_cli"
+pip install "numpy>=1.20.0" "scipy>=1.7.0" "matplotlib>=3.3.0" "astropy>=5.0.0" "mpdaf>=3.5.0" "skycalc_cli"
 ```
 
 ## Installation
@@ -84,6 +84,19 @@ res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True/False)
 
 # for time/exposures/best combination
 res_time = wst.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
+
+# --- SNR in a spectral window ---
+from pyetc_wst.etc import snr_in_window
+# Get median SNR in [5000, 6000] Å from a snr_from_source result
+med = snr_in_window(res_snr, lam1=5000, lam2=6000)
+
+# --- Find NDIT for target median SNR in a window ---
+result = wst.time_from_source_window(con, im, spe,
+                                     lam1=5000, lam2=6000,
+                                     target_snr=10,
+                                     compute='ndit')
+print(f"Required NDIT: {result['ndit']}, achieved median SNR: {result['median_snr']:.2f}")
+# The full snr_from_source result is in result['res']
 ```
 `debug=True/False` allows to print detailed info of the current run.
 
@@ -109,6 +122,7 @@ full_obs = {
     "SEE": 0.8,
     "AM": 1.2,
     "SKYCALC": False,
+    "GLAO": False,   # set True to enable Ground Layer AO mode
     
     "Obj_SED": 'template',
     "SED_Name": 'MARCS_8000K_lg+45',
@@ -138,10 +152,18 @@ full_obs = {
     
     "COADD_WL": 10,
     
-    "COADD_XY": 1 #(all integer numbers or 'best')
+    "COADD_XY": 1, #(all integer numbers or 'best')
+
+    # SNR window: target median SNR over a wavelength range instead of at a single reference
+    # wavelength. Applies to compute='dit', 'ndit', 'best'. Ignored for line sources.
+    "SNR_RANGE": False,  # set True to enable window-based SNR targeting
+    "LAM_WIN1": 5000,    # window start in Å
+    "LAM_WIN2": 6000,    # window end in Å
 }
 ```
 **NOTE**: *"COADD_XY": 'best' — automatically selects the spatial coadding that maximizes the SNR. Like the compute options in `time_from_source`, it updates "COADD_XY" in the obs dictionary with the chosen value.*
+
+**NOTE (3)**: *`"SNR_RANGE": True` — when set, `time_from_source` targets the median SNR over the wavelength window `[LAM_WIN1, LAM_WIN2]` instead of the SNR at `Lam_Ref`. Works for `compute='dit'`, `'ndit'`, and `'best'` (which internally uses `'ndit'`). Line sources (`Obj_SED='line'`) always use their line-center wavelength and ignore this flag. The window is automatically clipped to the instrument spectral range if it extends beyond it.*
 
 **NOTE (2)**: *When using `"Obj_SED": "upload"`, you must provide `"UPLOAD_FILE": "/path/to/spectrum.dat"` pointing to a two-column ASCII file/FITS table (wavelength, flux). Optional comment headers (or "units" of the FITS columns) set units: `# nm` or `# aa` for wavelength (default: Å - `aa`), `# fl` or `# ph` for flux (default: erg/cm²/s/Å - `fl`). Set `"OBJ_MAG": null` to use the spectrum as-is, or set a numeric value (e.g. `18`) to normalize it to that magnitude in the chosen `MAG_FIL`/`MAG_SYS` band.*
 
@@ -200,20 +222,29 @@ update in future version
 
 ## Version
 
-### 1.3:
-- Release date: 14/05/2026
+### 1.4 — 28 May 2026
+- **GLAO support**: new `"GLAO": True` key in the obs dictionary activates Ground Layer Adaptive Optics mode. IFS uses a wavelength-dependent IQ formula `IQ_glao(λ) = (A·λ_nm² + B·λ_nm + C)·AM^0.6` (λ_nm = wavelength in nm; A=1.22465e-7, B=−0.000576386, C=0.717164). MOS overrides the natural seeing to a fixed 0.8 arcsec (Paranal median at zenith, 5000 Å). Moffat beta updated: default (non-AO) **2.50 → 2.80**; IFS-GLAO uses **β = 2.5**.
+- **25 SWIRE galaxy/AGN spectral templates** added to the SED library: ellipticals (Ell2/5/13), spirals (Sa/Sb/Sc/Sd/Sdm/S0/Spi4), starbursts (M82/N6090/N6240/Arp220/I19254/I20551/I22491), Seyferts (Sey18/Sey2), QSOs (QSO1/QSO2/BQSO1/TQSO1/Mrk231), and Torus.
+- **`snr_in_window(res, lam1, lam2, dlbda, unit, stat)`**: new public utility function that extracts the median (or mean) SNR in a wavelength window from a `snr_from_source` result (SNR per spectral pixel).
+- **`ETC.time_from_source_window(ins, ima, spec, lam1, lam2, target_snr, unit, compute, n_iter)`**: new iterative method that finds the DIT or NDIT required to reach a target median SNR (per spectral pixel) inside a user-defined wavelength window [λ1, λ2]. Returns `ndit_raw` (pre-ceil float) alongside the ceiled integer.
+- **NDIT rounding unified to `ceil`**: all compute paths (`dit_snr`, `best`, `time_from_source_window`) consistently use `max(1, int(np.ceil(...)))` — if 7.1 exposures are needed, the result is always 8.
+- **Web interface**: GLAO toggle, spectral window inputs (λ₁/λ₂) for window-based exposure time computation, improved ASCII/JSON config downloads with timestamped filenames (`wst_..._YYYYMMDD_HHMMSS`), `GLAO`/`SNR_WIN`/`LAM_WIN1`/`LAM_WIN2` included in saved config, SNR window shown in input summary instead of reference wavelength, and consistent NDIT rounding messages showing `"X.XXXX, updating to Y for computation."` in all paths.
+- **`time_from_source_window` convergence improved**: max iterations raised to 20; convergence criterion changed to SNR-relative tolerance `1e-4` (0.01%); NDIT sub-1 case exits after one exact analytical step; no artificial floor on `param_val` during iteration.
+- **API JSON response**: `snr_window` field added when `SNR_WIN=True`, reporting `median_snr_pixel` and (if `COADD_WL>1`) `median_snr_rebin` in the requested wavelength window.
+- **Web results**: window mode now shows both rebinned and per-pixel median SNR (when `COADD_WL>1`) in all compute modes (`dit_snr`, `ndit_snr`, `best`), consistent with non-window behaviour.
+- **Emission line SNR window override**: for `Obj_SED="line"`, the SNR spectral window is now automatically ignored in all compute modes (DIT/NDIT, DIT&SNR, NDIT&SNR, Best) — `SNR_WIN` is forced to `False` and `SEL_CWAV` always takes priority as the sole reference wavelength. A warning message is printed in the debug output when the override occurs. The web interface hides and unchecks the SNR window controls whenever the SED type is set to `"line"`.
+
+### 1.3 — 14 May 2026
 - Migrated sky background retrieval from `skycalc_ipy` to `skycalc_cli` (official ESO CLI package): sky model data now accessed via `skm.data` attribute and parsed with `Table.read(BytesIO(skm.data), format='fits')`.
 - Fixed FITS column names: `skycalc_cli` v1.4 returns lowercase column names (`lam`, `flux`, `trans`) — updated in `etc.py` (`get_sky()`).
 - Replaced deprecated `pkg_resources` with `importlib.resources` in `specalib.py` for Python 3.9+ compatibility.
 - Removed invalid PWV value `0.01` from the allowed grid (SkyCalc minimum is `0.05`); previously this caused SkyCalc to reject the entire request.
 - Fixed false `MAG_SYS` validation error raised for emission-line sources (`Obj_SED="line"`): the check is now skipped when the SED type is `"line"` or `OBJ_MAG` is `None`, since magnitude normalisation is not used in those cases.
 
-### 1.2:
-- Release date: 29/04/2026
+### 1.2 — 29 April 2026
 - Fixed SkyCalc sky background retrieval: bypassed `skycalc_ipy.get_sky_spectrum()` to call `SkyModel` directly and read the returned FITS HDUList with an explicit `format='fits'` argument, resolving an `IORegistryError` from newer astropy versions that can no longer auto-detect the format of an in-memory HDUList. Moon altitude is derived from the moon-target separation and target zenith distance (`z_moon = ρ + z_target`), which always satisfies the SkyCalc constraint `|z − z_moon| ≤ ρ ≤ z + z_moon` for all airmasses.
 
-### 1.1:
-- Release date: 24/04/2026
+### 1.1 — 24 April 2026
 - Added MOS fiber injection fraction (`fiber_injection`) to exported inputs/results.
 - Updated MOS total throughput to include fiber injection fraction (fiber inj. frac.) in addition to instrument and atmosphere.
 - Consolidated recent fixes (RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates).
@@ -221,8 +252,9 @@ update in future version
 - Added moon-target separation as a user-settable parameter (`MOON_SEP`, default 45°); previously fixed at 45° internally.
 - Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously rejected values above 0.3 arcsec).
 
-### 1.0:
-- Official release 09/03/2026
+### 1.0 — 9 March 2026
+- Official release of the WST Exposure Time Calculator.
+- Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer).
   
 ## Contact
 

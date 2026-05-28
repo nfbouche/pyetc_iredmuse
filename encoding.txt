@@ -22,6 +22,10 @@ Needed only for moshr/moslr
 "OBJ_FIB_DISP": float/int (in [0, 0.6]) - OBJECT FIBER DISPLACEMENT, IN ARCSEC
     
 "SEE" (float/int, positive) - SEEING
+
+"GLAO" (bool, optional, default False) - ENABLE GROUND LAYER ADAPTIVE OPTICS MODE
+- with "INS"="ifs": applies wavelength-dependent IQ model and uses IFS GLAO beta.
+- with "INS"="moslr" or "moshr": seeing is overridden to the configured GLAO MOS value.
      
 "SKYCALC" (bool) - CALL OF THE ESO SKYCALC TOOL (TRUE) OR USAGE OF STATIC SKY FILES (FALSE)
 
@@ -70,6 +74,31 @@ Kurucz_B1V
 Kurucz_B8V
 Kurucz_F0V
 Kurucz_G2V
+Arp220_template_norm
+BQSO1_template_norm
+Ell13_template_norm
+Ell2_template_norm
+Ell5_template_norm
+I19254_template_norm
+I20551_template_norm
+I22491_template_norm
+M82_template_norm
+Mrk231_template_norm
+N6090_template_norm
+N6240_template_norm
+QSO1_template_norm
+QSO2_template_norm
+S0_template_norm
+Sa_template_norm
+Sb_template_norm
+Sc_template_norm
+Sd_template_norm
+Sdm_template_norm
+Sey18_template_norm
+Sey2_template_norm
+Spi4_template_norm
+TQSO1_template_norm
+Torus_template_norm
 MARCS_3000K_lg+30
 MARCS_3000K_lg+35
 MARCS_3000K_lg+40
