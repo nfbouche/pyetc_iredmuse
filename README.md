@@ -222,6 +222,11 @@ update in future version
 
 ## Version
 
+### 1.5 — 22 June 2026
+- **Fixed bug in `_resolve_best_coadd_ifs`** (`COADD_XY='best'` mode): replaced the sky-dominated approximation metric `fsq / N` with the correct full SNR metric `signal / sqrt(signal + N² · bg_per_spaxel)`, where `signal = fsq · S` and `bg_per_spaxel = sky + dark + RON` per spaxel at the reference wavelength. The source spectrum is now passed from all three callers (`snr_from_source_ifs`, `_snr_at_wave_ifs`, `time_from_source_ifs`); when no spectrum is available the old approximation is used as fallback.
+- **Increased default `max_coadd` from 20 to 40** for point sources: bad seeing conditions (e.g. 1.5–2″) with small spaxels can push the optimal aperture close to or beyond the old cap.
+- **Resolved sources: `max_coadd` now derived from image extent** — automatically set to `min(ima.shape) // oversamp`, removing the artificial fixed ceiling and ensuring the full morphology of extended sources is searched.
+
 ### 1.4 — 28 May 2026
 - **GLAO support**: new `"GLAO": True` key in the obs dictionary activates Ground Layer Adaptive Optics mode. IFS uses a wavelength-dependent IQ formula `IQ_glao(λ) = (A·λ_nm² + B·λ_nm + C)·AM^0.6` (λ_nm = wavelength in nm; A=1.22465e-7, B=−0.000576386, C=0.717164). MOS overrides the natural seeing to a fixed 0.8 arcsec (Paranal median at zenith, 5000 Å). Moffat beta updated: default (non-AO) **2.50 → 2.80**; IFS-GLAO uses **β = 2.5**.
 - **25 SWIRE galaxy/AGN spectral templates** added to the SED library: ellipticals (Ell2/5/13), spirals (Sa/Sb/Sc/Sd/Sdm/S0/Spi4), starbursts (M82/N6090/N6240/Arp220/I19254/I20551/I22491), Seyferts (Sey18/Sey2), QSOs (QSO1/QSO2/BQSO1/TQSO1/Mrk231), and Torus.
