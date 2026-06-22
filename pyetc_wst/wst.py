@@ -32,8 +32,18 @@ class WST(ETC):
         self.throughput_model_version = '09/03/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '28 May 2026',
+            'release_date': '22 June 2026',
             'history': [
+                {
+                    'version': '1.5',
+                    'label': 'Version 1.5',
+                    'release_date': '22 June 2026',
+                    'changes': [
+                        'Fixed bug in _resolve_best_coadd_ifs (IFS COADD_XY="best" mode): replaced the sky-dominated approximation metric fsq/N with the correct full SNR metric signal/sqrt(signal + N²·bg_per_spaxel), where signal = fsq·S and bg_per_spaxel = sky + dark + RON per spaxel at the reference wavelength. The source spectrum is now passed from all three callers (snr_from_source_ifs, _snr_at_wave_ifs, time_from_source_ifs); when no spectrum is available the old approximation is used as fallback.',
+                        'Increased default max_coadd from 20 to 40 for point sources: bad seeing conditions (e.g. 1.5–2") with small spaxels can push the optimal aperture close to or beyond the old cap.',
+                        'For resolved sources, max_coadd is now derived automatically from the extent of the source image (min(ima.shape) // oversamp), removing the artificial fixed ceiling and ensuring the full extent of extended morphologies is searched.',
+                    ],
+                },
                 {
                     'version': '1.4',
                     'label': 'Version 1.4',

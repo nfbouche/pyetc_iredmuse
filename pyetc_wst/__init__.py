@@ -5,8 +5,20 @@ A Python package for exposure time calculation and signal-to-noise ratio estimat
 for the WST instrument suite (IFS, MOS-LR, MOS-HR).
 """
 
-__version__ = "1.4"
+__version__ = "1.5"
 __author__ = "Matteo Ferro & Roland Bacon"
+
+# Changelog
+# v1.5 (2026-06-22)
+#   - Fixed bug in _resolve_best_coadd_ifs: replaced sky-dominated metric
+#     (fsq / N) with the full SNR metric (fsq*S / sqrt(fsq*S + N^2*bg)),
+#     where bg = sky + dark + RON per spaxel at wave_ref. Source spectrum
+#     is now passed from all three callers (snr_from_source_ifs,
+#     _snr_at_wave_ifs, time_from_source_ifs) to enable the correct metric.
+#   - Increased default max_coadd from 20 to 40 for point sources (bad
+#     seeing can push the optimal aperture beyond the old cap).
+#   - For resolved sources, max_coadd is now derived automatically from the
+#     extent of the source image, removing the artificial 20-spaxel ceiling.
 
 # Import main classes and functions
 from .wst import WST

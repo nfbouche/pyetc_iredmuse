@@ -1161,7 +1161,7 @@ class ETC:
         coadd = max(1, int(3 * fwhm / (2.35 * ins['spaxel_size']) + 0.5))
         return coadd
 
-    def _resolve_best_coadd_ifs(self, ins, ima, wave_ref, debug=False, max_coadd=20):
+    def _resolve_best_coadd_ifs(self, ins, ima, wave_ref, spec=None, debug=False, max_coadd=40):
         """Resolve ima_coadd='best' by finding the coadd that maximizes aperture SNR.
 
         Uses a single reference wavelength and a bidirectional hill-climbing
@@ -1177,6 +1177,10 @@ class ETC:
             Source image (None for ps/sb).
         wave_ref : float
             Reference wavelength in Angstrom.
+        spec : MPDAF Spectrum, float, or None
+            Source spectrum (or scalar value at wave_ref). When provided, the
+            full SNR metric SNR = fsq*S / sqrt(fsq*S + N^2*bg) is used.
+            When None, falls back to the sky-dominated approximation fsq / N.
         debug : bool
             If True, log the result.
         max_coadd : int
@@ -1192,6 +1196,39 @@ class ETC:
                 self.logger.info("Coadd 'best' for surface brightness: set to 1 (per-spaxel)")
             return
 
+        # ----- Compute scalar noise quantities at wave_ref -----
+        sky_at_wave = float(np.interp(wave_ref, obs['skyemi'].wave.coord(), obs['skyemi'].data))
+        ins_at_wave = float(np.interp(wave_ref, ins['instrans'].wave.coord(), ins['instrans'].data))
+        atm_at_wave = float(np.interp(wave_ref, obs['skyabs'].wave.coord(), obs['skyabs'].data))
+
+        tel_eff_area = self.tel['effective_area_IFS']
+        dl = ins['dlbda']
+        Ksky = ins_at_wave * ins['spaxel_size']**2 * tel_eff_area * (dl / 1e4)
+        dark = ins['dcurrent'] * obs['dit'] * obs['ndit'] / 3600
+        ron = ins['ron']**2 * obs['ndit']
+        sky_ph_spaxel = sky_at_wave * Ksky * obs['dit'] * obs['ndit']
+        bg_per_spaxel = sky_ph_spaxel + dark + ron
+
+        # ----- Source counts per spaxel at wave_ref (for full SNR metric) -----
+        # flux conversion (same as in snr_from_source_ifs / time_from_source_ifs)
+        flux_conv = 1.0
+        if obs['spec_type'] == 'cont':
+            flux_conv *= ins['dlbda']
+        # sb is excluded above (early return with coadd=1)
+
+        factor_src = None
+        if spec is not None:
+            a = (wave_ref * 1e-8 / (H_cgs * C_cgs)) * (tel_eff_area * 1e4) * atm_at_wave
+            Kt = ins_at_wave * a
+            if np.isscalar(spec):
+                spec_at_wave = float(spec)
+            else:
+                # MPDAF Spectrum: interpolate at wave_ref
+                spec_at_wave = float(np.interp(wave_ref, spec.wave.coord(), spec.data))
+            fs = spec_at_wave * flux_conv * Kt * obs['dit'] * obs['ndit']
+            if fs > 0:
+                factor_src = fs
+
         # Initial guess from PSF FWHM
         fwhm_ref, _ = get_seeing_fwhm(
             obs['seeing'], obs['airmass'], wave_ref,
@@ -1202,8 +1239,14 @@ class ETC:
             fwhm_ref = float(fwhm_ref.ravel()[0])
         coadd0 = max(1, int(3 * fwhm_ref / (2.35 * ins['spaxel_size']) + 0.5))
 
+        # For resolved sources the optimal aperture can exceed the PSF-based
+        # default cap; derive the upper bound from the image extent instead.
+        if obs['ima_type'] == 'resolved' and ima is not None:
+            oversamp = getattr(ima, 'oversamp', 10)
+            max_coadd = max(max_coadd, min(ima.data.shape) // oversamp)
+
         def _snr_for_coadd(N):
-            """Aperture SNR at wave_ref for NxN coadd."""
+            """Aperture SNR metric at wave_ref for NxN coadd."""
             uneven = 1 if N % 2 == 1 else 0
             psf_ima = self.get_image_psf(ins, wave_ref, uneven=uneven)
             if obs['ima_type'] == 'resolved':
@@ -1211,11 +1254,14 @@ class ETC:
                     raise ValueError("For resolved sources, image must not be None.")
                 psf_ima = convolve_and_center(ima, psf_ima)
             _, fsq = self.ifs_spaxel_aperture(ins, psf_ima, N=N)
-            # fsq is the fraction of flux in the NxN aperture;
-            # SNR ~ fsq / sqrt(fsq + N^2 * background_terms)
-            # We only need the *relative* ranking so we can ignore constant factors
-            # but keeping the full expression is cheap and more accurate.
-            return fsq, N
+            if factor_src is not None:
+                # Full SNR metric: signal / sqrt(signal + N^2 * bg_per_spaxel)
+                signal = fsq * factor_src
+                noise_sq = signal + N**2 * bg_per_spaxel
+                return signal / np.sqrt(max(noise_sq, 1e-30))
+            else:
+                # Fallback: sky-dominated approximation
+                return fsq / N
 
         # Evaluate fractions for all candidate coadd values
         best_snr = -1.0
@@ -1223,17 +1269,14 @@ class ETC:
 
         # search downward from coadd0
         for c in range(coadd0, 0, -1):
-            fsq, _ = _snr_for_coadd(c)
-            # metric: fsq / N  (proxy for SNR ranking independent of exposure time)
-            metric = fsq / c  
+            metric = _snr_for_coadd(c)
             if metric < best_snr:
                 break
             best_coadd, best_snr = c, metric
 
         # search upward from coadd0 + 1
         for c in range(coadd0 + 1, max_coadd + 1):
-            fsq, _ = _snr_for_coadd(c)
-            metric = fsq / c
+            metric = _snr_for_coadd(c)
             if metric < best_snr:
                 break
             best_coadd, best_snr = c, metric
@@ -1356,7 +1399,7 @@ class ETC:
                 lbda_ref = obs['wave_line_center']
             if lbda_ref is None:
                 lbda_ref = (ins['lbda1'] + ins['lbda2']) / 2.0
-            self._resolve_best_coadd_ifs(ins, ima, lbda_ref, debug=debug)
+            self._resolve_best_coadd_ifs(ins, ima, lbda_ref, spec=spec, debug=debug)
 
         sky_ph_square = sky_ph_spaxel * obs['ima_coadd']**2
         dark_square = dark_spaxel * obs['ima_coadd']**2
@@ -1892,7 +1935,7 @@ class ETC:
 
         # Resolve 'best' coadd at this wavelength
         if obs['ima_coadd'] == 'best':
-            self._resolve_best_coadd_ifs(ins, ima, wave_target, debug=debug)
+            self._resolve_best_coadd_ifs(ins, ima, wave_target, spec=spec_at_wave, debug=debug)
         
         Ksky = ins_at_wave * ins['spaxel_size']**2 * tel_eff_area * (dl / 1e4)
         
@@ -2113,7 +2156,7 @@ class ETC:
                 lbda_ref = obs['wave_line_center']
             if lbda_ref is None:
                 lbda_ref = (ins['lbda1'] + ins['lbda2']) / 2.0
-            self._resolve_best_coadd_ifs(ins, ima, lbda_ref, debug=debug)
+            self._resolve_best_coadd_ifs(ins, ima, lbda_ref, spec=spec, debug=debug)
 
         # unit conversion
         flux = 1.0
