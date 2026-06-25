@@ -1561,7 +1561,10 @@ class ETC:
         if sat:
             flag_sat = False
             frac_sat = None
-            max_counts = res['peak']['nph_source'] + res['peak']['nph_sky']
+            # Divide by NDIT: nph_source and nph_sky include DIT*NDIT;
+            # saturation is a per-single-exposure limit.
+            _ndit_sat = max(1, int(obs.get('ndit') or 1))
+            max_counts = (res['peak']['nph_source'] + res['peak']['nph_sky']) / _ndit_sat
             data_arr = np.array(max_counts.data)
             if np.any(data_arr > threshold_sat):
                 flag_sat = True
@@ -1777,8 +1780,11 @@ class ETC:
             flag_sat = False
             frac_sat = None
 
-            # Here is important to consider that the total counts are spread in num_trace * trace_pixel_width pixels
-            max_counts = (res['spec']['nph_source'] + res['spec']['nph_sky']) / (num_trace * trace_pixel_width)
+            # Counts are spread over num_trace * trace_pixel_width pixels;
+            # also divide by NDIT since nph_source/nph_sky include DIT*NDIT
+            # and saturation is a per-single-exposure limit.
+            _ndit_sat = max(1, int(obs.get('ndit') or 1))
+            max_counts = (res['spec']['nph_source'] + res['spec']['nph_sky']) / (num_trace * trace_pixel_width * _ndit_sat)
             data_arr = np.array(max_counts.data)
             if np.any(data_arr > threshold_sat):
                 flag_sat = True
@@ -2154,7 +2160,8 @@ class ETC:
         start_time = time.time()
 
         # Resolve 'best' coadd at the SNR reference wavelength
-        if obs['ima_coadd'] == 'best':
+        _coadd_was_best = (obs['ima_coadd'] == 'best')
+        if _coadd_was_best:
             lbda_ref = obs.get('snr_wave')
             if lbda_ref is None and obs['spec_type'] == 'line':
                 lbda_ref = obs['wave_line_center']
@@ -2337,63 +2344,93 @@ class ETC:
             if obs['spbin'] == 1:
                 if debug:
                     self.logger.debug(f"Computing best DITxNDIT combination without spectral rebinning")
-                # nearest wave idx to snr_wave
                 snr_idx = np.abs(wave - obs['snr_wave']).argmin()
                 wave_snr = wave[snr_idx]
-
-                sv = source_ph_square.data[snr_idx]
-                skyv = sky_ph_square.data[snr_idx]
-                darkv = dark_square.data[snr_idx]
-                ronv = ron_square.data[snr_idx] 
-            
             elif obs['spbin'] > 1:
                 if debug:
                     self.logger.debug(f"Computing best DITxNDIT combination with spectral rebinning, factor of {obs['spbin']}")
-                # Find the bin containing snr_wave
                 snr_idx = np.abs(wave - obs['snr_wave']).argmin()
                 bin_start = (snr_idx // obs['spbin']) * obs['spbin']
                 bin_end = min(bin_start + obs['spbin'], len(wave))
-                
-                # Sum directly over the bin
-                sv = np.sum(source_ph_square.data[bin_start:bin_end])
-                skyv = np.sum(sky_ph_square.data[bin_start:bin_end])
-                darkv = np.sum(dark_square.data[bin_start:bin_end])
-                ronv = np.sum(ron_square.data[bin_start:bin_end])
-                
                 wave_snr = np.mean(wave[bin_start:bin_end])
-                
-            # we compute the maximum DIT to avoid saturation
-            counts = source_ph_peak.data + sky_ph_spaxel.data
-            dit_sat = threshold_sat / max(counts)
 
-            # now we compute the NDIT to achieve the target SNR with this DIT
-            ndit_raw = snrv**2 * (sv + skyv + darkv + ronv / dit_sat) / (sv**2 * dit_sat)
+            def _get_svs(src_sq, sky_sq, drk_sq, ron_sq):
+                """Extract signal scalars at the SNR reference pixel/bin."""
+                if obs['spbin'] == 1:
+                    return (src_sq.data[snr_idx], sky_sq.data[snr_idx],
+                            drk_sq.data[snr_idx], ron_sq.data[snr_idx])
+                bs = (snr_idx // obs['spbin']) * obs['spbin']
+                be = min(bs + obs['spbin'], len(src_sq.data))
+                return (np.sum(src_sq.data[bs:be]), np.sum(sky_sq.data[bs:be]),
+                        np.sum(drk_sq.data[bs:be]), np.sum(ron_sq.data[bs:be]))
 
-            # we approximate NDIT to the next integer
-            nditv = max(1, int(np.ceil(ndit_raw)))
-            
+            # Coadd-DIT feedback loop: iterate until the optimal coadd is
+            # consistent with the solved DIT+NDIT (converges in 2-3 steps).
+            ditv = dit_sat = ndit_raw = nditv = None
+            for _fb in range(5):
+                sv, skyv, darkv, ronv = _get_svs(
+                    source_ph_square, sky_ph_square, dark_square, ron_square)
+
+                counts = source_ph_peak.data + sky_ph_spaxel.data
+                dit_sat = threshold_sat / max(counts)
+
+                ndit_raw = snrv**2 * (sv + skyv + darkv + ronv / dit_sat) / (sv**2 * dit_sat)
+                nditv = max(1, int(np.ceil(ndit_raw)))
+
+                A = -(sv**2 * nditv) / (snrv**2)
+                B = sv + skyv + darkv
+                C = ronv
+                roots = np.roots([A, B, C])
+                ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
+
+                if not _coadd_was_best:
+                    break  # fixed coadd — no iteration needed
+
+                # Re-optimise coadd for the found DIT+NDIT
+                old_coadd = obs['ima_coadd']
+                obs['dit'] = ditv
+                obs['ndit'] = nditv
+                self._resolve_best_coadd_ifs(ins, ima, lbda_ref, spec=spec, debug=False)
+                new_coadd = obs['ima_coadd']
+
+                # Rebuild spectral arrays for the new coadd
+                sky_ph_square = sky_ph_spaxel * new_coadd**2
+                dark_square   = dark_spaxel   * new_coadd**2
+                ron_square    = ron_spaxel    * new_coadd**2
+                if obs['ima_type'] == 'sb':
+                    source_ph_square = source_ph_peak * new_coadd**2
+                else:
+                    # Recompute PSF if coadd parity changed (uneven flag differs)
+                    new_uneven = 1 if new_coadd % 2 == 1 else 0
+                    old_uneven = 1 if old_coadd % 2 == 1 else 0
+                    if new_uneven != old_uneven:
+                        _psf_new = self.get_image_psf(ins, snr_wave_actual, uneven=new_uneven)
+                        if obs['ima_type'] == 'ps':
+                            selected_image = _psf_new
+                        else:  # resolved
+                            selected_image = convolve_and_center(ima, _psf_new)
+                    _fp, _fs = self.ifs_spaxel_aperture(ins, selected_image, N=new_coadd)
+                    source_ph_peak   = factor_source * _fp
+                    source_ph_square = factor_source * _fs
+
+                if new_coadd == old_coadd:
+                    break  # coadd converged
+
             if debug:
                 self.logger.debug(f"Maximum DIT to avoid saturation: {dit_sat} seconds")
                 self.logger.debug(f"Computed NDIT: {ndit_raw}, rounded to the next integer: {nditv}")
-
-            # we solve numerically for the DIT
-            A = - (sv**2 * nditv) / (snrv**2)
-            B = sv + skyv + darkv
-            C = ronv
-
-            roots = np.roots([A, B, C])
-            ditv = roots[np.isreal(roots) & (roots > 0)].real[0]
-
-            if debug:
-                self.logger.debug(f"Final NDIT: {nditv}  and exposures for DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), with spectral rebinning factor: {obs['spbin']}")
+                self.logger.debug(f"Final NDIT: {nditv} and DIT: {ditv} to achieve SNR: {snrv} at wavelength: {wave_snr} AA (nearest to requested SNR wavelength: {obs['snr_wave']} AA), spbin: {obs['spbin']}")
                 self.logger.debug(f"Overriding NDIT in the observation dictionary...")
                 self.logger.debug(f"Overriding DIT in the observation dictionary...")
-            
+
             res['ndit'] = nditv
             obs['ndit'] = nditv
-
             res['dit'] = ditv
             obs['dit'] = ditv
+            res['dit_sat'] = dit_sat        # saturation-limited DIT (most efficient)
+            res['ndit_raw'] = ndit_raw      # fractional NDIT before ceiling
+            if _coadd_was_best:
+                res['ima_coadd'] = obs['ima_coadd']  # optimal coadd integer, frozen
 
         res['input'] = dict(
             flux_source=spec, 
@@ -2650,6 +2687,8 @@ class ETC:
 
             res['dit'] = ditv
             obs['dit'] = ditv
+            res['dit_sat'] = dit_sat        # saturation-limited DIT (most efficient)
+            res['ndit_raw'] = ndit_raw      # fractional NDIT before ceiling
 
         fiber_injection_full = Spectrum(data=np.full(wave.shape, fiber_injection_snr), wave=spec.wave)
         res['input'] = dict(
@@ -2811,6 +2850,9 @@ class ETC:
         }
         if compute == 'ndit':
             result['ndit_raw'] = param_val_raw
+        if compute == 'dit' and abs(obs['dit'] - 0.1) < 1e-6:
+            # DIT hit the minimum floor — source too bright to reach target SNR
+            result['dit_at_min_floor'] = True
         return result
 
 # # # # # # # # # # # # # # # #
