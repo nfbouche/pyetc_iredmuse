@@ -2737,6 +2737,8 @@ class ETC:
         param_val = param_start
         res = None
         med = None
+        evaluated = {}   # ndit_int → med, for bracket detection (NDIT)
+        _history = []    # (param_val, med) pairs for secant acceleration (DIT)
 
         for i in range(n_iter):
             obs[param_key] = max(1, int(round(param_val))) if compute == 'ndit' else max(0.1, float(param_val))
@@ -2750,6 +2752,15 @@ class ETC:
             new_val = param_val * scale
             if compute == 'dit':
                 new_val = max(0.1, new_val)
+                # Secant acceleration: interpolate linearly from last two points
+                _history.append((param_val, med))
+                if len(_history) >= 2:
+                    p1, s1 = _history[-2]
+                    p2, s2 = _history[-1]
+                    if abs(s2 - s1) > 1e-10:
+                        secant = p1 + (target_snr - s1) * (p2 - p1) / (s2 - s1)
+                        if secant > 0:
+                            new_val = secant
             if debug:
                 self.logger.debug(
                     f"  iter {i+1}: {param_key}={obs[param_key]}, "
@@ -2762,6 +2773,15 @@ class ETC:
             # Converged: SNR within 0.01% of target
             if abs(med - target_snr) / target_snr < 1e-4:
                 break
+            # Bracket detection for NDIT: if consecutive integers N and N+1 are
+            # both evaluated and straddle the target, the answer is ceil = N+1.
+            if compute == 'ndit':
+                evaluated[obs[param_key]] = med
+                n = int(param_val)
+                if n >= 1 and n in evaluated and (n + 1) in evaluated:
+                    if evaluated[n] < target_snr < evaluated[n + 1]:
+                        param_val = float(n + 1)
+                        break
 
         # Final value
         param_val_raw = param_val

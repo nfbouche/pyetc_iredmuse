@@ -21,6 +21,11 @@ __author__ = "Matteo Ferro & Roland Bacon"
 #     channel centre used in DIT+NDIT mode (Lam_Ref is irrelevant there);
 #     window centre used when SNR_RANGE=True; Lam_Ref clipped to channel range
 #     in time_from_source_ifs to prevent silent fallback to sky-dominated metric.
+#   - time_from_source_window oscillation/slow-convergence fixed:
+#     NDIT bracket detection exits loop as soon as consecutive integers N, N+1
+#     straddle the target SNR (~3 iters instead of 20). DIT secant acceleration
+#     replaces slow multiplicative update with linear interpolation of the last
+#     two (DIT, SNR) points (~4 iters instead of 20).
 
 # Import main classes and functions
 from .wst import WST
