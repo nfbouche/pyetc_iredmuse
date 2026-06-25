@@ -1392,13 +1392,17 @@ class ETC:
         ron_spaxel = Spectrum(data=np.full(wave.shape, ron), wave=spec.wave)
         factor_source = spec * flux * Kt * obs['dit'] * obs['ndit']
 
-        # Resolve 'best' coadd via optimal extraction search
+        # Resolve 'best' coadd via optimal extraction search.
+        # In DIT+NDIT mode snr_wave is not meaningful here, so use the centre
+        # of the SNR window (if set) or the channel centre as reference.
         if obs['ima_coadd'] == 'best':
-            lbda_ref = obs.get('snr_wave')
-            if lbda_ref is None and obs['spec_type'] == 'line':
-                lbda_ref = obs['wave_line_center']
-            if lbda_ref is None:
+            if obs['spec_type'] == 'line':
+                lbda_ref = float(obs['wave_line_center'])
+            elif obs.get('snr_range') and obs.get('lam_win1') and obs.get('lam_win2'):
+                lbda_ref = (obs['lam_win1'] + obs['lam_win2']) / 2.0
+            else:
                 lbda_ref = (ins['lbda1'] + ins['lbda2']) / 2.0
+            lbda_ref = float(np.clip(lbda_ref, ins['lbda1'], ins['lbda2']))
             self._resolve_best_coadd_ifs(ins, ima, lbda_ref, spec=spec, debug=debug)
 
         sky_ph_square = sky_ph_spaxel * obs['ima_coadd']**2

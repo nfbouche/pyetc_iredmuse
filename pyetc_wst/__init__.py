@@ -17,8 +17,10 @@ __author__ = "Matteo Ferro & Roland Bacon"
 #     _snr_at_wave_ifs, time_from_source_ifs) to enable the correct metric.
 #   - Increased default max_coadd from 20 to 40 for point sources (bad
 #     seeing can push the optimal aperture beyond the old cap).
-#   - For resolved sources, max_coadd is now derived automatically from the
-#     extent of the source image, removing the artificial 20-spaxel ceiling.
+#   - Fixed lbda_ref selection for COADD_XY='best' in snr_from_source_ifs:
+#     channel centre used in DIT+NDIT mode (Lam_Ref is irrelevant there);
+#     window centre used when SNR_RANGE=True; Lam_Ref clipped to channel range
+#     in time_from_source_ifs to prevent silent fallback to sky-dominated metric.
 
 # Import main classes and functions
 from .wst import WST
