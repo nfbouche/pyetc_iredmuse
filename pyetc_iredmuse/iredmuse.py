@@ -15,9 +15,9 @@ import astropy.units as u
 
 CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 SKYDIR = CURDIR + '/sky'
-WSTDIR = CURDIR + '/wst'
+rMUSEDIR = CURDIR + '/iredmuse'
 
-class WST(ETC):
+class iredMUSE(ETC):
     
     def __init__(self, log=logging.INFO, skip_dataload=False):
         start_time = time.time()
@@ -130,17 +130,8 @@ class WST(ETC):
         }
 
 # # # # # # # MORE # # # # # #
-# MOS-HR missing the iq instrument (used 0.3" constant), MOS-LR IQ not clear (used 0.3" constant)
-# telescope IQ missing for IFS (used 0.07" constant, taken from fig. 30 of the telescope optical design report), for MOS-LR and MOS-HR (used 0.1875" constant, from fig. 15 z=30deg, at 74% area)
-# Moffat Beta missing everywhere (used 2.5 constant)
-# Diameter missing everywhere (used 12m constant)
-
-# 26/02/2026: updated MOS-LR with new values from the document, added yellow channel, updated version number, added data files with all the new throughput curves
-# we still miss the other quantities for the yellow channel, are they changed for the other channels? we just copied green
-# Diop throughput not taken into account, for now just the cata
-
-# 09/03/2026: updated IFS with new CMOS binning values and the MOS-HR with the dioptric values
-# # # # # # # # # # # # # # #
+# 0.1 initial version
+# # # # # # # # # # # # # # # #
 
                 
            
