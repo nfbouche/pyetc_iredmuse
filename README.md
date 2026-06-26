@@ -1,14 +1,21 @@
-# pyetc_wst
+# pyetc_iredmuse
 
-Exposure Time Calculator (ETC) for the Wide-Field Spectroscopic Telescope (WST).
+Exposure Time Calculator (ETC) for the iredMUSE instrument.
+
+## Credits
+
+forked from Project Link: https://github.com/ferromatteo/pyetc_wst
+
+thanks to Matteo Ferro - [matteo.ferro@inaf.it]
+
+Cite: Ferro, Genoni et al. 2026, SPIE
+
 
 ## Description
 
-**pyetc_wst** is a Python package for exposure time calculation and signal-to-noise ratio (SNR) estimation for the WST instrument suite, including:
+**pyetc_iredmuse** is a Python package for exposure time calculation and signal-to-noise ratio (SNR) estimation for IFU instruments, including:
 
-- **IFS** (Integral Field Spectrograph): Blue and Red channels
-- **MOS-LR** (Multi-Object Spectrograph Low Resolution): Blue, Green, Yellow, and Red channels  
-- **MOS-HR** (Multi-Object Spectrograph High Resolution): Blue, Green, Yellow, and Red channels
+- **IFS** (Integral Field Spectrograph): z and J and zJ channels
 
 ## Requirements
 
@@ -39,59 +46,57 @@ If you already have it installed via pip, you can upgrade it with:
 
 #### Option 1: forced (recommended)
 ```bash
-pip install --force-reinstall git+https://github.com/ferromatteo/pyetc_wst.git
+pip install --force-reinstall git+https://github.com/nfbouche/pyetc_iredmuse.git
 ```
 
 #### Option 2: normal upgrade
 ```bash
-pip install --upgrade git+https://github.com/ferromatteo/pyetc_wst.git
+pip install --upgrade git+https://github.com/nfbouche/pyetc_iredmuse.git
 ```
 
 #### Option 3: uninstall and reinstall (cleanest option)
 ```bash
 pip uninstall pyetc_wst
-pip install git+https://github.com/ferromatteo/pyetc_wst.git
+pip install git+https://github.com/nfbouche/pyetc_iredmuse.git
 ```
 
 ## Quick Start
 
 ```python
-from pyetc_wst import WST
+from pyetc_iredmuse import iredMUSE
 
 # Initialize the ETC, 'DEBUG' will allow you to see useful prints during the computation,
 # skip_dataload = False will load the static sky configurations + general transmissions
-wst = WST(log = 'DEBUG', skip_dataload = False)
+redmuse = iredMUSE(log = 'DEBUG', skip_dataload = False)
 
 # Display instrument information
-wst.info()
+redmuse.info()
 
 # Access specific instruments
-ifs_blue = wst.ifs['blue']
-moslr_red = wst.moslr['red']
-moshr_yellow = wst.moshr['yellow']
+ifs = redmuse.ifs['zband']
 
 # Build the full dictionaries needed for computation (full_obs), which will include observing conditions, source properties, computation requests, and instrument configuration
 full_obs = {...}
-con, ob, spe, im, spe_input = wst.build_obs_full(full_obs)
+con, ob, spe, im, spe_input = redmuse.build_obs_full(full_obs)
 
 # Compute time or snr given the full dictionary results
 
 # for SNR:
-res_snr = wst.snr_from_source(con, im, spe, debug=True/False)
+res_snr = redmuse.snr_from_source(con, im, spe, debug=True/False)
 
 # for SNR at a specific wavelength:
-res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True/False)
+res_snr_at_wave = redmuse.snr_at_wave(con, im, spe, debug=True/False)
 
 # for time/exposures/best combination
-res_time = wst.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
+res_time = redmuse.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
 
 # --- SNR in a spectral window ---
-from pyetc_wst.etc import snr_in_window
+from pyetc_iredmuse.etc import snr_in_window
 # Get median SNR in [5000, 6000] Å from a snr_from_source result
 med = snr_in_window(res_snr, lam1=5000, lam2=6000)
 
 # --- Find NDIT for target median SNR in a window ---
-result = wst.time_from_source_window(con, im, spe,
+result = redmuse.time_from_source_window(con, im, spe,
                                      lam1=5000, lam2=6000,
                                      target_snr=10,
                                      compute='ndit')
@@ -194,9 +199,6 @@ These sub-dictionaries include:
   - 'frac_dark' 
   - 'frac_ron'
 
-For MOS runs, `res_snr['input']` also includes:
-- `'fiber_injection'`: fiber injection fraction (1.0 for surface brightness, computed for point/resolved sources)
-- `'total_trans'`: total transmission used in plots/results. For MOS it is `instrument x atmosphere x fiber_injection`.
 
 Moreover, there is a handy function to plot all the noise components together, and will accept `res_snr['spec']['noise']` (and also `res_snr['peak']['noise']`) for IFS): 
 
@@ -206,7 +208,7 @@ plot_noise_components(res_snr['spec']['noise'])
 ![Noise Plot](images/noise.png)
 
 ## Notebook
-`WST_LimMag.ipynb`: computes the limiting magnitude of the WST Integral Field Spectrograph (IFS) as a function of wavelength, for both point sources and extended sources (surface brightness), across the blue and red channels.
+`iredMUSE_LimMag.ipynb`: computes the limiting magnitude of the WST Integral Field Spectrograph (IFS) as a function of wavelength, for both point sources and extended sources (surface brightness), across the blue and red channels.
 For a given target S/N ratio, the notebook sweeps the wavelength range and finds — via Brent's root-finding method — the faintest AB magnitude detectable under three sky background conditions: dark, grey, and bright time.
 
 
@@ -222,55 +224,16 @@ update in future version
 
 ## Version
 
-### 1.5 — 22 June 2026
-- **Fixed bug in `_resolve_best_coadd_ifs`** (`COADD_XY='best'` mode): replaced the sky-dominated approximation metric `fsq / N` with the correct full SNR metric `signal / sqrt(signal + N² · bg_per_spaxel)`, where `signal = fsq · S` and `bg_per_spaxel = sky + dark + RON` per spaxel at the reference wavelength. The source spectrum is now passed from all three callers (`snr_from_source_ifs`, `_snr_at_wave_ifs`, `time_from_source_ifs`); when no spectrum is available the old approximation is used as fallback.
-- **Increased default `max_coadd` from 20 to 40** for point sources: bad seeing conditions (e.g. 1.5–2″) with small spaxels can push the optimal aperture close to or beyond the old cap.
-- **Resolved sources: `max_coadd` now derived from image extent** — automatically set to `min(ima.shape) // oversamp`, removing the artificial fixed ceiling and ensuring the full morphology of extended sources is searched.
-- **Fixed `lbda_ref` selection for `COADD_XY='best'` in `snr_from_source_ifs`**: in DIT+NDIT mode `Lam_Ref` is now ignored for coadd optimisation (it is irrelevant when computing the full SNR spectrum) — the channel centre is used instead. When `SNR_RANGE=True` the window centre `(LAM_WIN1+LAM_WIN2)/2` is used. In `time_from_source_ifs`, `Lam_Ref` is clipped to the channel range so an out-of-range value no longer silently zeros the source spectrum and falls back to the sky-dominated metric.
-- **Fixed oscillation/slow-convergence in `time_from_source_window`**: NDIT bracket detection exits the loop as soon as consecutive integers N and N+1 straddle the target SNR (~3 iterations instead of 20). DIT secant acceleration replaces the slow multiplicative update with linear interpolation of the last two (DIT, SNR) points, reducing typical DIT convergence from 20 to ~4 iterations.
-- **Fixed cross-optimisation consistency in `time_from_source_ifs(compute='best')` with `COADD_XY='best'`**: the optimal spatial aperture is now jointly solved with DIT+NDIT via an iterative feedback loop (≤5 iterations). After each analytical DIT+NDIT solve the coadd is re-optimised until convergence, ensuring the returned DIT is self-consistent with the aperture used. Returns `dit_sat` (saturation-limited DIT), `ndit_raw` (fractional NDIT before ceiling), and `ima_coadd` (frozen integer aperture). `time_from_source_mos(compute='best')` also returns `dit_sat` and `ndit_raw`.
-- **Fixed PSF parity inconsistency in the best-mode coadd-DIT feedback loop**: when the feedback loop changes the optimal coadd from even to odd (or vice versa), the PSF image is now recomputed with the updated `uneven` flag. This ensures the source flux fractions used in the analytical SNR formula match those computed by `snr_from_source_ifs`, eliminating an ~18% SNR discrepancy that arose when the initial and final coadds had different parities.
-- **Web interface — best+window cross-optimisation**: a 2-step approach eliminates the NDIT≈0 failure seen when a DIT-optimal exposure is too long for a target window SNR. Step 1 finds `DIT_sat` via `compute='best'`; step 2 finds NDIT for the window target with DIT fixed at `DIT_sat`. For very bright sources (`ndit_raw<1`), NDIT is fixed to 1 and DIT is iterated instead. The auto-optimised coadd is also frozen before the final `snr_from_source` display call for consistent SNR reporting.
-- **Fixed saturation flag in `snr_from_source_ifs` and `snr_from_source_mos`**: the per-pixel peak counts are now divided by NDIT before comparison with `threshold_sat` (50 000 e⁻). Previously, `nph_source` and `nph_sky` include the full DIT×NDIT integrated counts; dividing by NDIT correctly tests whether any single exposure saturates a pixel.
-- **Fixed saturation line in plot and `peak_counts` in API**: the secondary-axis peak-counts curve (`nph_source_peak + nph_sky_peak`) is now divided by NDIT before plotting, so the displayed values represent per-single-DIT counts and are directly comparable to the 50 000 e⁻ saturation line. The API `peak_counts` field (IFS only) is corrected consistently.
-- **Added `dit_at_min_floor` flag in `time_from_source_window`**: when `compute='dit'` converges to the 0.1 s instrument minimum DIT floor, the returned dict now includes `dit_at_min_floor: True`. The web interface uses this flag to emit a warning that the source is too bright to reach the target SNR at this wavelength.
+### 0.1 — 26 June 2026
+- initial version
+- Throughput curves not official
 
-### 1.4 — 28 May 2026
-- **GLAO support**: new `"GLAO": True` key in the obs dictionary activates Ground Layer Adaptive Optics mode. IFS uses a wavelength-dependent IQ formula `IQ_glao(λ) = (A·λ_nm² + B·λ_nm + C)·AM^0.6` (λ_nm = wavelength in nm; A=1.22465e-7, B=−0.000576386, C=0.717164). MOS overrides the natural seeing to a fixed 0.8 arcsec (Paranal median at zenith, 5000 Å). Moffat beta updated: default (non-AO) **2.50 → 2.80**; IFS-GLAO uses **β = 2.5**.
-- **25 SWIRE galaxy/AGN spectral templates** added to the SED library: ellipticals (Ell2/5/13), spirals (Sa/Sb/Sc/Sd/Sdm/S0/Spi4), starbursts (M82/N6090/N6240/Arp220/I19254/I20551/I22491), Seyferts (Sey18/Sey2), QSOs (QSO1/QSO2/BQSO1/TQSO1/Mrk231), and Torus.
-- **`snr_in_window(res, lam1, lam2, dlbda, unit, stat)`**: new public utility function that extracts the median (or mean) SNR in a wavelength window from a `snr_from_source` result (SNR per spectral pixel).
-- **`ETC.time_from_source_window(ins, ima, spec, lam1, lam2, target_snr, unit, compute, n_iter)`**: new iterative method that finds the DIT or NDIT required to reach a target median SNR (per spectral pixel) inside a user-defined wavelength window [λ1, λ2]. Returns `ndit_raw` (pre-ceil float) alongside the ceiled integer.
-- **NDIT rounding unified to `ceil`**: all compute paths (`dit_snr`, `best`, `time_from_source_window`) consistently use `max(1, int(np.ceil(...)))` — if 7.1 exposures are needed, the result is always 8.
-- **Web interface**: GLAO toggle, spectral window inputs (λ₁/λ₂) for window-based exposure time computation, improved ASCII/JSON config downloads with timestamped filenames (`wst_..._YYYYMMDD_HHMMSS`), `GLAO`/`SNR_WIN`/`LAM_WIN1`/`LAM_WIN2` included in saved config, SNR window shown in input summary instead of reference wavelength, and consistent NDIT rounding messages showing `"X.XXXX, updating to Y for computation."` in all paths.
-- **`time_from_source_window` convergence improved**: max iterations raised to 20; convergence criterion changed to SNR-relative tolerance `1e-4` (0.01%); NDIT sub-1 case exits after one exact analytical step; no artificial floor on `param_val` during iteration.
-- **API JSON response**: `snr_window` field added when `SNR_WIN=True`, reporting `median_snr_pixel` and (if `COADD_WL>1`) `median_snr_rebin` in the requested wavelength window.
-- **Web results**: window mode now shows both rebinned and per-pixel median SNR (when `COADD_WL>1`) in all compute modes (`dit_snr`, `ndit_snr`, `best`), consistent with non-window behaviour.
-- **Emission line SNR window override**: for `Obj_SED="line"`, the SNR spectral window is now automatically ignored in all compute modes (DIT/NDIT, DIT&SNR, NDIT&SNR, Best) — `SNR_WIN` is forced to `False` and `SEL_CWAV` always takes priority as the sole reference wavelength. A warning message is printed in the debug output when the override occurs. The web interface hides and unchecks the SNR window controls whenever the SED type is set to `"line"`.
-
-### 1.3 — 14 May 2026
-- Migrated sky background retrieval from `skycalc_ipy` to `skycalc_cli` (official ESO CLI package): sky model data now accessed via `skm.data` attribute and parsed with `Table.read(BytesIO(skm.data), format='fits')`.
-- Fixed FITS column names: `skycalc_cli` v1.4 returns lowercase column names (`lam`, `flux`, `trans`) — updated in `etc.py` (`get_sky()`).
-- Replaced deprecated `pkg_resources` with `importlib.resources` in `specalib.py` for Python 3.9+ compatibility.
-- Removed invalid PWV value `0.01` from the allowed grid (SkyCalc minimum is `0.05`); previously this caused SkyCalc to reject the entire request.
-- Fixed false `MAG_SYS` validation error raised for emission-line sources (`Obj_SED="line"`): the check is now skipped when the SED type is `"line"` or `OBJ_MAG` is `None`, since magnitude normalisation is not used in those cases.
-
-### 1.2 — 29 April 2026
-- Fixed SkyCalc sky background retrieval: bypassed `skycalc_ipy.get_sky_spectrum()` to call `SkyModel` directly and read the returned FITS HDUList with an explicit `format='fits'` argument, resolving an `IORegistryError` from newer astropy versions that can no longer auto-detect the format of an in-memory HDUList. Moon altitude is derived from the moon-target separation and target zenith distance (`z_moon = ρ + z_target`), which always satisfies the SkyCalc constraint `|z − z_moon| ≤ ρ ≤ z + z_moon` for all airmasses.
-
-### 1.1 — 24 April 2026
-- Added MOS fiber injection fraction (`fiber_injection`) to exported inputs/results.
-- Updated MOS total throughput to include fiber injection fraction (fiber inj. frac.) in addition to instrument and atmosphere.
-- Consolidated recent fixes (RON handling updates, surface-brightness/MOS corrections, and sky-area term consistency updates).
-- Improved configuration/info tracking text for throughput model metadata.
-- Added moon-target separation as a user-settable parameter (`MOON_SEP`, default 45°); previously fixed at 45° internally.
-- Fixed MOS object displacement validation range: now correctly 0–0.6 arcsec (previously rejected values above 0.3 arcsec).
-
-### 1.0 — 9 March 2026
-- Official release of the WST Exposure Time Calculator.
-- Throughput curves (all channels) delivered by Olga Bellido (WST System Engineer).
+### 1.0 — 1 July 2026
+- Official release of the iredMUSE Exposure Time Calculator.
+- Throughput curves not official
   
 ## Contact
 
-Matteo Ferro - [matteo.ferro@inaf.it]
+Matteo Ferro - [nicolas.bouche@cnrs.fr]
 
-Project Link: [https://github.com/ferromatteo/pyetc_wst](https://github.com/ferromatteo/pyetc_wst)
+Project Link: [https://github.com/nfbouche/pyetc_iredmuse](https://github.com/nfbouche/pyetc_iredmuse)
