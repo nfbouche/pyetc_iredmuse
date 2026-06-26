@@ -49,18 +49,18 @@ pip install --upgrade git+https://github.com/ferromatteo/pyetc_wst.git
 
 #### Option 3: uninstall and reinstall (cleanest option)
 ```bash
-pip uninstall pyetc_wst
+pip uninstall pyetc_iredmuse
 pip install git+https://github.com/ferromatteo/pyetc_wst.git
 ```
 
 ## Quick Start
 
 ```python
-from pyetc_wst import WST
+from pyetc_iredmuse import WST
 
 # Initialize the ETC, 'DEBUG' will allow you to see useful prints during the computation,
 # skip_dataload = False will load the static sky configurations + general transmissions
-wst = WST(log = 'DEBUG', skip_dataload = False)
+wst = WST(log='DEBUG', skip_dataload=False)
 
 # Display instrument information
 wst.info()
@@ -77,16 +77,17 @@ con, ob, spe, im, spe_input = wst.build_obs_full(full_obs)
 # Compute time or snr given the full dictionary results
 
 # for SNR:
-res_snr = wst.snr_from_source(con, im, spe, debug=True/False)
+res_snr = wst.snr_from_source(con, im, spe, debug=True / False)
 
 # for SNR at a specific wavelength:
-res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True/False)
+res_snr_at_wave = wst.snr_at_wave(con, im, spe, debug=True / False)
 
 # for time/exposures/best combination
-res_time = wst.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
+res_time = wst.time_from_source(con, im, spe, compute='dit' / 'ndit' / 'best', debug=True / False)
 
 # --- SNR in a spectral window ---
-from pyetc_wst.etc import snr_in_window
+from pyetc_iredmuse.etc import snr_in_window
+
 # Get median SNR in [5000, 6000] Å from a snr_from_source result
 med = snr_in_window(res_snr, lam1=5000, lam2=6000)
 
