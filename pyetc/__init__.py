@@ -10,6 +10,7 @@ __author__ = "Nicolas Bouché & Matteo Ferro & Roland Bacon"
 
 # Import main classes and functions
 from .wst import WST
+from .iredmuse import iredMUSE
 from .etc import (
     ETC,
     get_data,
