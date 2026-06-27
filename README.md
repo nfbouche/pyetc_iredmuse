@@ -39,7 +39,7 @@ pip install "numpy>=1.20.0" "scipy>=1.7.0" "matplotlib>=3.3.0" "astropy>=5.0.0" 
 You can install directly from GitHub using pip:
 
 ```bash
-pip install git+https://github.com/ferromatteo/pyetc_wst.git
+pip install git+https://github.com/nfbouche/pyetc_iredmuse.git
 ```
 
 If you already have it installed via pip, you can upgrade it with:
@@ -56,23 +56,23 @@ pip install --upgrade git+https://github.com/nfbouche/pyetc_iredmuse.git
 
 #### Option 3: uninstall and reinstall (cleanest option)
 ```bash
-pip uninstall pyetc_iredmuse
+pip uninstall pyetc
 pip install git+https://github.com/nfbouche/pyetc_iredmuse.git
 ```
 
 ## Quick Start
 
 ```python
-from pyetc_iredmuse import iredMUSE
+from pyetc import iredMUSE
 
 # Initialize the ETC, 'DEBUG' will allow you to see useful prints during the computation,
 # skip_dataload = False will load the static sky configurations + general transmissions
-redmuse = iredMUSE(log = 'DEBUG', skip_dataload = False)
+redmuse = iredMUSE(log='DEBUG', skip_dataload=False)
 
 # Display instrument information
 redmuse.info()
 
-# Access specific instruments
+# Access specific configuration
 ifs = redmuse.ifs['zband']
 
 # Build the full dictionaries needed for computation (full_obs), which will include observing conditions, source properties, computation requests, and instrument configuration
@@ -82,24 +82,25 @@ con, ob, spe, im, spe_input = redmuse.build_obs_full(full_obs)
 # Compute time or snr given the full dictionary results
 
 # for SNR:
-res_snr = redmuse.snr_from_source(con, im, spe, debug=True/False)
+res_snr = redmuse.snr_from_source(con, im, spe, debug=True / False)
 
 # for SNR at a specific wavelength:
-res_snr_at_wave = redmuse.snr_at_wave(con, im, spe, debug=True/False)
+res_snr_at_wave = redmuse.snr_at_wave(con, im, spe, debug=True / False)
 
 # for time/exposures/best combination
-res_time = redmuse.time_from_source(con, im, spe, compute = 'dit'/'ndit'/'best', debug=True/False)
+res_time = redmuse.time_from_source(con, im, spe, compute='dit' / 'ndit' / 'best', debug=True / False)
 
 # --- SNR in a spectral window ---
-from pyetc_iredmuse.etc import snr_in_window
+from pyetc.etc import snr_in_window
+
 # Get median SNR in [5000, 6000] Å from a snr_from_source result
 med = snr_in_window(res_snr, lam1=5000, lam2=6000)
 
 # --- Find NDIT for target median SNR in a window ---
 result = redmuse.time_from_source_window(con, im, spe,
-                                     lam1=5000, lam2=6000,
-                                     target_snr=10,
-                                     compute='ndit')
+                                         lam1=5000, lam2=6000,
+                                         target_snr=10,
+                                         compute='ndit')
 print(f"Required NDIT: {result['ndit']}, achieved median SNR: {result['median_snr']:.2f}")
 # The full snr_from_source result is in result['res']
 ```
