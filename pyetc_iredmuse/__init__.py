@@ -35,6 +35,7 @@ __all__ = [
     # Main classes
     "WST",
     "ETC",
+    "iredMUSE",
     "PhotometricSystem",
     "SEDModels",
     "FilterManager",
