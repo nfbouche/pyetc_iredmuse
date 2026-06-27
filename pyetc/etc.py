@@ -119,7 +119,11 @@ class ETC:
         """  
         if ('desc' in self.tel) and ('version' in self.tel):
             self.logger.info('Telescope %s version %s', self.tel['desc'],self.tel['version'])      
-        self.logger.info('Diameter: %.2f m Eff. Area MOS: %.1f m2 Eff. Area IFS: %.1f m2', self.tel['diameter'],self.tel['effective_area_MOS'], self.tel['effective_area_IFS'])
+        if self.tel['effective_area_MOS'] is not None:
+            self.logger.info('Diameter: %.2f m Eff. Area MOS: %.1f m2 Eff. Area IFS: %.1f m2', self.tel['diameter'],self.tel['effective_area_MOS'], self.tel['effective_area_IFS'])
+        else:
+            self.logger.info('Diameter: %.2f m Eff. Area IFS: %.1f m2', self.tel['diameter'], self.tel['effective_area_IFS'])
+        
         for ins_name in ins_names:
             insfam = getattr(self, ins_name)
             for chan in insfam['channels']:
