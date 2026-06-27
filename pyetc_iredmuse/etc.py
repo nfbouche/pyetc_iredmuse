@@ -14,7 +14,11 @@ import astropy.units as u
 from astropy.modeling.models import Sersic2D
 
 from io import BytesIO
-from skycalc_cli.skycalc import SkyModel as _SkyCLIModel
+
+try:
+    from skycalc_cli.skycalc import SkyModel as _SkyCLIModel
+except ImportError:  # pragma: no cover
+    _SkyCLIModel = None
 
 from mpdaf.obj import Spectrum, WaveCoord, Image, moffat_image
 
@@ -3166,6 +3170,9 @@ def compute_sky(outdir):
       'darksky'->0 deg, 'greysky'->90 deg, 'brightsky'->180 deg.
     - Saves one FITS file per airmass per moon phase.
     """
+    if _SkyCLIModel is None:
+        raise ImportError("skycalc_cli is required to compute sky spectra")
+
     os.makedirs(outdir, exist_ok=True)
 
     all_moons = ['darksky', 'greysky', 'brightsky']
