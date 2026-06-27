@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from pyetc_iredmuse.etc import (
+from pyetc.iredmuse import iredMUSE
+from pyetc.etc import (
     get_seeing_fwhm,
     mask_spectrum_edges,
     mask_line_region,
@@ -15,7 +16,7 @@ from mpdaf.obj import Spectrum, Image, WaveCoord
 
 
 def test_get_seeing_fwhm_natural_seeing():
-    wave = np.array([4000.0, 5000.0, 6000.0])
+    wave = np.array([9000, 11000, 13000])
     iq, iq_before = get_seeing_fwhm(
         seeing=0.8,
         airmass=1.2,
