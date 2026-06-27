@@ -3,17 +3,18 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyetc_wst"
+name = "pyetc"
 dynamic = ["version"]
-description = "Exposure Time Calculator for the Wide-Field Spectroscopic Telescope (WST)"
+description = "Exposure Time Calculator for the iredMUSE instrument (VLT)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
+    {name = "Nicolas Bouché", email = "nicolas.bouche@cnrs.fr"},
     {name = "Matteo Ferro", email = "matteo.ferro@inaf.it"},
     {name = "Roland Bacon"}
 ]
-keywords = ["astronomy", "spectroscopy", "exposure-time-calculator", "WST"]
+keywords = ["astronomy", "spectroscopy", "exposure-time-calculator", "VLT"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -34,19 +35,19 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ferromatteo/pyetc_wst"
-Repository = "https://github.com/ferromatteo/pyetc_wst"
-Documentation = "https://github.com/ferromatteo/pyetc_wst#readme"
-Issues = "https://github.com/ferromatteo/pyetc_wst/issues"
+Homepage = "https://github.com/nfbouche/pyetc_iredmuse"
+Repository = "https://github.com/nfbouche/pyetc_iredmuse"
+Documentation = "https://github.com/nfbouche/pyetc_iredmuse#readme"
+Issues = "https://github.com/nfbouche/pyetc_iredmuse/issues"
 
 [tool.setuptools.dynamic]
-version = {attr = "pyetc_wst.__version__"}
+version = {attr = "pyetc.__version__"}
 
 [tool.setuptools]
-packages = ["pyetc_wst"]
+packages = ["pyetc"]
 
 [tool.setuptools.package-data]
-pyetc_wst = [
+pyetc = [
     "data/**/*",
     "Band_Filters/**/*.txt",
     "ESO_original_spectra/**/*",
