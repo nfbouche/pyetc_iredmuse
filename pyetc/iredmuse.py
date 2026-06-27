@@ -83,7 +83,7 @@ class iredMUSE(ETC):
                               dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, WSTDIR)
+            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
 
         # IFS red channel
         chan = 'Jband'
@@ -95,15 +95,15 @@ class iredMUSE(ETC):
                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                spaxel_size = 0.25, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 1.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
-                               lbda1 = 1130, # starting wavelength in Angstroem
+                               lbda1 = 11300, # starting wavelength in Angstroem
                                lbda2 = 13300, # end wavelength in Angstroem
                                lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, WSTDIR)
-              
+            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
+
         #IFS z+J channel
         chan = 'zJband'
         self.ifs[chan] = dict(desc=self.throughput_model_desc,
@@ -120,7 +120,9 @@ class iredMUSE(ETC):
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
-
+        if not skip_dataload:
+            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
+            
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':
             self.logger.debug(f"WST.__init__ processing time: {end_time - start_time:.4f} seconds")
