@@ -1,6 +1,6 @@
 """
 Legacy setup.py for backward compatibility.
-Version is read from pyetc_iredmuse/__init__.py — edit only that file to bump the version.
+Version is read from pyetc/__init__.py — edit only that file to bump the version.
 """
 from setuptools import setup
 import re
@@ -8,7 +8,7 @@ import os
 
 # Single source of truth for version
 _here = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(_here, "pyetc_iredmuse", "__init__.py")) as _f:
+with open(os.path.join(_here, "pyetc", "__init__.py")) as _f:
     _version = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', _f.read(), re.M).group(1)
 
 # Read requirements
@@ -16,15 +16,15 @@ with open("requirements.txt", "r") as f:
     requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 setup(
-    name="pyetc_iredmuse",
+    name="pyetc",
     version=_version,
-    description="Exposure Time Calculator for the Wide-Field Spectroscopic Telescope (WST)",
-    author="Matteo Ferro",
-    author_email="matteo.ferro@inaf.it",
-    url="https://github.com/ferromatteo/pyetc_wst",
-    packages=["pyetc_iredmuse"],
+    description="Exposure Time Calculator for the iredMUSE instrument (VLT)",
+    author="Nicolas Bouché, Matteo Ferro, Roland Bacon",
+    author_email="nicolas.bouche@cnrs.fr",
+    url="https://github.com/nfbouche/pyetc_iredmuse",
+    packages=["pyetc"],
     package_data={
-        "pyetc_iredmuse": [
+        "pyetc": [
             "data/**/*",
             "Band_Filters/**/*.txt",
             "ESO_original_spectra/**/*",
