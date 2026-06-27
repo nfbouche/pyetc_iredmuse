@@ -15,11 +15,14 @@ import astropy.units as u
 
 CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 SKYDIR = CURDIR + '/sky'
-rMUSEDIR = CURDIR + '/iredmuse'
+TRANSDIR = CURDIR + '/iredmuse'
 
 class iredMUSE(ETC):
     
-    def __init__(self, log=logging.INFO, skip_dataload=False):
+    def __init__(self, log=logging.INFO, skip_dataload=False,spaxel=0.22):
+        """
+            Initialize the iredMUSE class with telescope and instrument parameters.
+        """
         start_time = time.time()
         self.refdir = CURDIR
         setup_logging(__name__, level=log, stream=sys.stdout)
@@ -27,9 +30,9 @@ class iredMUSE(ETC):
         self.logger.propagate = False
         
         # ------ Telescope ---------
-        self.name = 'WST'
-        self.throughput_model_desc = 'Throughput model version 1 delivered by Olga Bellido, date 09/03/2026'
-        self.throughput_model_version = '01/06/2026'
+        self.name = 'iredMUSE'
+        self.throughput_model_desc = 'Throughput estimations by Nicolas Bouché'
+        self.throughput_model_version = '26/06/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
             'release_date': '26 June 2026',
@@ -46,16 +49,17 @@ class iredMUSE(ETC):
             ],
         }
         
-        self.tel = dict(effective_area_IFS=48.03, # minimum of the ICD document
+        self.VLT = dict(effective_area_IFS=48.5, # VLT effective area in m^2
+                        effective_area_MOS=None, # VLT effective area in m^2
                         diameter=8.0, # primary diameter
                         desc='Based on Prelim Concept',
                         version='26/06/2026',
                         iq_fwhm_ins = {
-                            'ifs': 0.1,
-                            # average FWHM on 95% FOV as also used in the WST_IFS_Tradeoff_Matrix. Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2008
-                            'mos': 0.1875,
+                            'ifs': 0.1, # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
                             }
                         )
+        self.tel = self.VLT
+
 
         # ------- GLAO parameters -----------
         self.glao = dict(
@@ -74,7 +78,7 @@ class iredMUSE(ETC):
                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
-                              spaxel_size = 0.22, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
+                              spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                               dlbda = 1.0, # Angstroem/pixel, previously 0.5, updated on 03/03/2026
                               lbda1 = 9330, # starting wavelength in Angstroem
                               lbda2 = 11300, # end wavelength in Angstroem
@@ -83,7 +87,10 @@ class iredMUSE(ETC):
                               dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
+            try:
+                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+            except Exception as e:
+                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
 
         # IFS red channel
         chan = 'Jband'
@@ -93,7 +100,7 @@ class iredMUSE(ETC):
                                iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                                iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
-                               spaxel_size = 0.25, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
+                               spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 1.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 11300, # starting wavelength in Angstroem
                                lbda2 = 13300, # end wavelength in Angstroem
@@ -102,7 +109,10 @@ class iredMUSE(ETC):
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
+            try:
+                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+            except Exception as e:
+                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
 
         #IFS z+J channel
         chan = 'zJband'
@@ -112,7 +122,7 @@ class iredMUSE(ETC):
                                iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
                                iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
-                               spaxel_size = 0.25, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
+                               spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 9330, # starting wavelength in Angstroem
                                lbda2 = 13300, # end wavelength in Angstroem
@@ -121,13 +131,16 @@ class iredMUSE(ETC):
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, rMUSEDIR)
-            
+            try:
+                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+            except Exception as e:
+                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':
-            self.logger.debug(f"WST.__init__ processing time: {end_time - start_time:.4f} seconds")
+            self.logger.debug(f"iredMUSE.__init__ processing time: {end_time - start_time:.4f} seconds")
         
-    def info(self, ins=None):
+    def info(self, ins='ifs'):
         rel = self.get_release_info()
         self.logger.info('ETC version %s release date %s', rel['version'], rel['release_date'])
         for item in rel['changelog']:
