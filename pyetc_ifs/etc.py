@@ -63,6 +63,7 @@ __all__ = [
     '_checkrange',
     '_checkobs',
     'get_seeing_fwhm',
+    'lsf_resolution',
     'compute_sky',
     'mask_spectrum_edges',
     'mask_line_region',
@@ -3379,6 +3380,17 @@ def simulate_counts_vectorized(npix, source_arr, sky_arr, dark, RON, seed=None):
     return total_counts
 
 # # # # # # # # # # # # # # # #
+
+def lsf_resolution(ins, wavelength_AA: float) -> float:
+    """
+    return the spectral resolution R = lambda / delta_lambda of the LSF at a given wavelength in Angstrom
+    """
+
+    lstep_AA = ins['instrans'].get_step()
+    fwhm_AA = ins['lsfpix'] * lstep_AA
+
+    return float(wavelength_AA) / float(fwhm_AA)
+
 
 
 # # # # # # # MORE # # # # # #
