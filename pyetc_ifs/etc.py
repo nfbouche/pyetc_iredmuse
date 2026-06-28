@@ -3143,6 +3143,10 @@ def get_seeing_fwhm(seeing, airmass, wave, diam, iq_tel, iq_ins, glao=False):
         iq_atm = (A_glao * wave_nm**2 + B_glao * wave_nm + C_glao) * airmass**0.6
         iq_atm = np.maximum(iq_atm, 0.05)  # physical safety floor
     else:
+        import logging as _logging
+        _logging.getLogger(__name__).info(
+            "Compute iq with seeing (%s) ",seeing
+        )
         # from ESPRESSO (Schmidt+24)
         r0 = 0.1*seeing**(-1)*(wave/5000)**(1.2)*airmass**(-0.6)
         l0 = 46 # for VLT (in ETC)
