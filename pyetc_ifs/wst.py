@@ -347,7 +347,7 @@ class WST(ETC):
         
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':
-            self.logger.debug(f"WST.__init__ processing time: {end_time - start_time:.4f} seconds")
+            self.logger.debug(f"{self.name}.__init__ processing time: {end_time - start_time:.4f} seconds")
         
     def info(self, ins=None):
         rel = self.get_release_info()
