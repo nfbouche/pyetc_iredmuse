@@ -103,7 +103,7 @@ class iredMUSE(ETC):
                                spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 1.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 11300, # starting wavelength in Angstroem
-                               lbda2 = 13300, # end wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
                                lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
@@ -125,7 +125,7 @@ class iredMUSE(ETC):
                                spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
                                dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 9330, # starting wavelength in Angstroem
-                               lbda2 = 13300, # end wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
                                lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
@@ -146,7 +146,7 @@ class iredMUSE(ETC):
         for item in rel['changelog']:
             self.logger.info('\t- %s', item)
         if ins is None:
-            self._info(['ifs', 'moslr', 'moshr'])
+            self._info(['ifs'])
         else:
             self._info([ins])
 
