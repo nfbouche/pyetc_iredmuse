@@ -94,6 +94,17 @@ class ETC:
     _BROAD_WMAX_NM  = 1101.0  # nm  — small buffer above MOS LR red (~11000 Å)
     _BROAD_WDELTA_NM = 0.005  # nm  = 0.05 Å/point; needed for MOS-HR LSF convolutions
 
+    VLT = dict(effective_area_IFS=48.5,  # VLT effective area in m^2
+                    effective_area_MOS=None,  # VLT effective area in m^2
+                    diameter=8.0,  # primary diameter
+                    desc='Based on Prelim Concept',
+                    version='26/06/2026',
+                    iq_fwhm_ins={
+                        'ifs': 0.1,
+                        # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
+                    }
+                    )
+
     def __init__(self, log=logging.INFO):
         self.logger = logging.getLogger(__name__)
         self.logger.propagate = False
