@@ -49,15 +49,6 @@ class iredMUSE(ETC):
             ],
         }
         
-        self.VLT = dict(effective_area_IFS=48.5, # VLT effective area in m^2
-                        effective_area_MOS=None, # VLT effective area in m^2
-                        diameter=8.0, # primary diameter
-                        desc='Based on Prelim Concept',
-                        version='26/06/2026',
-                        iq_fwhm_ins = {
-                            'ifs': 0.1, # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
-                            }
-                        )
         self.tel = self.VLT
 
 
@@ -126,7 +117,7 @@ class iredMUSE(ETC):
                                dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
                                lbda1 = 9330, # starting wavelength in Angstroem
                                lbda2 = 12000, # end wavelength in Angstroem
-                               lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
+                               lsfpix = 2., # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
