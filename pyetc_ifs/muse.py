@@ -24,7 +24,7 @@ class MUSE(ETC):
             Initialize the iredMUSE class with telescope and instrument parameters.
         """
         start_time = time.time()
-        self.refdir = CURDIR
+        self.refdir = self.CURDIR
         setup_logging(__name__, level=log, stream=sys.stdout)
         self.logger = logging.getLogger(__name__)
         self.logger.propagate = False
@@ -79,10 +79,7 @@ class MUSE(ETC):
                               dcurrent = 3, # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+            self.get_data(self.ifs, chan, 'ifs')
 
 
         end_time = time.time()
