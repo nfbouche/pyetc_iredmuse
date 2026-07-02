@@ -6,22 +6,23 @@ import numpy as np
 from mpdaf.obj import Spectrum, WaveCoord
 from mpdaf.log import setup_logging
 
-from .etc import ETC, get_data
+from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
 
 # used by get_data
 from astropy.table import Table
 import astropy.units as u
 
-CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-SKYDIR = CURDIR + '/sky'
-WSTDIR = CURDIR + '/wst'
+
 
 class WST(ETC):
-    
+    CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    SKYDIR = CURDIR + '/sky'
+    TRANSDIR = CURDIR + '/wst'
+
     def __init__(self, log=logging.INFO, skip_dataload=False):
         start_time = time.time()
-        self.refdir = CURDIR
+        self.refdir = self.CURDIR
         setup_logging(__name__, level=log, stream=sys.stdout)
         self.logger = logging.getLogger(__name__)
         self.logger.propagate = False
@@ -154,7 +155,7 @@ class WST(ETC):
                               dcurrent = 1.0 * 2, # dark current (e-/pixel/h) # sum for the 2x1 binning                                
                               )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, WSTDIR)
+            self.get_data(self.ifs, chan, 'ifs')
 
         # IFS red channel
         chan = 'red'
@@ -173,7 +174,7 @@ class WST(ETC):
                                dcurrent = 1.0 * 2, # dark current (e-/pixel/h) # sum for the 2x1 binning   
                                )
         if not skip_dataload:
-            get_data(self.ifs, chan, 'ifs', SKYDIR, WSTDIR)
+            self.get_data(self.ifs, chan, 'ifs')
               
         # # --------- MOSLR-VIS 4 channels 6k CCD -------------
         
@@ -199,7 +200,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                           
                                 )
         if not skip_dataload:
-            get_data(self.moslr, chan, 'moslr', SKYDIR, WSTDIR)
+            self.get_data(self.moslr, chan, 'moslr')
             
         # MOS-LR green channel      
         chan = self.moslr['channels'][1] 
@@ -219,7 +220,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                                
                                 )
         if not skip_dataload:
-            get_data(self.moslr, chan, 'moslr', SKYDIR, WSTDIR)
+            self.get_data(self.moslr, chan, 'moslr')
 
         # MOS-LR yellow channel      
         chan = self.moslr['channels'][2] 
@@ -239,7 +240,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                             
                                 )
         if not skip_dataload:
-            get_data(self.moslr, chan, 'moslr', SKYDIR, WSTDIR)
+            self.get_data(self.moslr, chan, 'moslr')
 
         # MOS-LR red channel      
         chan = self.moslr['channels'][3] 
@@ -259,7 +260,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                              
                                 )
         if not skip_dataload:
-            get_data(self.moslr, chan, 'moslr', SKYDIR, WSTDIR)
+            self.get_data(self.moslr, chan, 'moslr')
 
             
         # --------- MOS-HR 4 channels ------------- # We use dioptric values
@@ -283,7 +284,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                                
                                 )
         if not skip_dataload:
-            get_data(self.moshr, chan, 'moshr', SKYDIR, WSTDIR)
+            self.get_data(self.moshr, chan, 'moshr')
             
         # MOS-HR green channel 
         chan = self.moshr['channels'][1]
@@ -303,7 +304,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                                
                                 )
         if not skip_dataload:
-            get_data(self.moshr, chan, 'moshr', SKYDIR, WSTDIR)
+            self.get_data(self.moshr, chan, 'moshr')
 
         # MOS-HR V channel
         chan = self.moshr['channels'][2]
@@ -323,7 +324,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                              
                                 )
         if not skip_dataload:
-            get_data(self.moshr, chan, 'moshr', SKYDIR, WSTDIR)
+            self.get_data(self.moshr, chan, 'moshr')
 
         # MOS-HR I channel
         chan = self.moshr['channels'][3]
@@ -343,7 +344,7 @@ class WST(ETC):
                                 dcurrent = 1.0, # dark current (e-/pixel/h)                        
                                 )
         if not skip_dataload:
-            get_data(self.moshr, chan, 'moshr', SKYDIR, WSTDIR)
+            self.get_data(self.moshr, chan, 'moshr')
         
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':

@@ -15,7 +15,6 @@ from .muse import MUSE
 from .bluemuse import blueMUSE
 from .etc import (
     ETC,
-    get_data,
     sersic,
     moffat,
     get_seeing_fwhm,
@@ -46,7 +45,6 @@ __all__ = [
     "SEDModels",
     "FilterManager",
     # Functions
-    "get_data",
     "sersic",
     "moffat",
     "get_seeing_fwhm",
