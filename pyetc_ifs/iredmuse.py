@@ -6,25 +6,27 @@ import numpy as np
 from mpdaf.obj import Spectrum, WaveCoord
 from mpdaf.log import setup_logging
 
-from .etc import ETC, get_data
+from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
 
 # used by get_data
 from astropy.table import Table
 import astropy.units as u
 
-CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-SKYDIR = CURDIR + '/sky'
-TRANSDIR = CURDIR + '/iredmuse'
+
 
 class iredMUSE(ETC):
-    
+
+    CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    SKYDIR = CURDIR + '/sky'
+    TRANSDIR = CURDIR + '/iredmuse'
+
     def __init__(self, log=logging.INFO, skip_dataload=False,spaxel=0.22):
         """
             Initialize the iredMUSE class with telescope and instrument parameters.
         """
         start_time = time.time()
-        self.refdir = CURDIR
+        self.refdir = self.CURDIR
         setup_logging(__name__, level=log, stream=sys.stdout)
         self.logger = logging.getLogger(__name__)
         self.logger.propagate = False
@@ -78,10 +80,7 @@ class iredMUSE(ETC):
                               dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+            self.get_data(self.ifs, chan, 'ifs')
 
         # IFS red channel
         chan = 'Jband'
@@ -100,10 +99,7 @@ class iredMUSE(ETC):
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+                self.get_data(self.ifs, chan, 'ifs')
 
         #IFS z+J channel
         chan = 'zJband'
@@ -122,10 +118,7 @@ class iredMUSE(ETC):
                                dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                                )
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+            self.get_data(self.ifs, chan, 'ifs')
 
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':

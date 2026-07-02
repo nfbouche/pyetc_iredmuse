@@ -6,19 +6,19 @@ import numpy as np
 from mpdaf.obj import Spectrum, WaveCoord
 from mpdaf.log import setup_logging
 
-from .etc import ETC, get_data
+from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
 
 # used by get_data
 from astropy.table import Table
 import astropy.units as u
 
-CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-SKYDIR = CURDIR + '/sky'
-TRANSDIR = CURDIR + '/muse'
 
 class MUSE(ETC):
-    
+    CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    SKYDIR = CURDIR + '/sky'
+    TRANSDIR = CURDIR + '/muse'
+
     def __init__(self, log=logging.INFO, skip_dataload=False):
         """
             Initialize the iredMUSE class with telescope and instrument parameters.
