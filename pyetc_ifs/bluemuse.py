@@ -48,16 +48,7 @@ class blueMUSE(ETC):
 
             ],
         }
-        
-        self.VLT = dict(effective_area_IFS=48.5, # VLT effective area in m^2
-                        effective_area_MOS=None, # VLT effective area in m^2
-                        diameter=8.0, # primary diameter
-                        desc='Based on Prelim Concept',
-                        version='26/06/2026',
-                        iq_fwhm_ins = {
-                            'ifs': 0.1, # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
-                            }
-                        )
+
         self.tel = self.VLT
 
 
