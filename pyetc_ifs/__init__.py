@@ -11,6 +11,8 @@ __author__ = "Nicolas Bouché & Matteo Ferro & Roland Bacon"
 # Import main classes and functions
 from .wst import WST
 from .iredmuse import iredMUSE
+from .muse import MUSE
+from .bluemuse import blueMUSE
 from .etc import (
     ETC,
     get_data,
@@ -38,6 +40,8 @@ __all__ = [
     "WST",
     "ETC",
     "iredMUSE",
+    "MUSE",
+    "blueMUSE",
     "PhotometricSystem",
     "SEDModels",
     "FilterManager",
