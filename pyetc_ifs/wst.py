@@ -118,16 +118,8 @@ class WST(ETC):
             ],
         }
         
-        self.tel = dict(effective_area_MOS=93.57, # mean of median and weighted mean of the ICD document
-                        effective_area_IFS=92.03, # minimum of the ICD document
-                        diameter=12.0, # primary diameter
-                        desc='Based on Design doc: WST-00006_3 Telescope optical design report', # Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2018
-                        version='03/03/2026',
-                        iq_fwhm_ins = {
-                            'ifs': 0.1, # average FWHM on 95% FOV as also used in the WST_IFS_Tradeoff_Matrix. Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2008
-                            'mos': 0.1875,
-                            }
-                        )
+
+        self.tel=self.WST
 
         # ------- GLAO parameters -----------
         self.glao = dict(

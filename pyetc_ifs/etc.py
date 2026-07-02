@@ -93,6 +93,18 @@ class ETC:
     _BROAD_WMAX_NM  = 1101.0  # nm  — small buffer above MOS LR red (~11000 Å)
     _BROAD_WDELTA_NM = 0.005  # nm  = 0.05 Å/point; needed for MOS-HR LSF convolutions
 
+    WST = dict(effective_area_MOS=93.57,  # mean of median and weighted mean of the ICD document
+                    effective_area_IFS=92.03,  # minimum of the ICD document
+                    diameter=12.0,  # primary diameter
+                    desc='Based on Design doc: WST-00006_3 Telescope optical design report',
+                    # Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2018
+                    version='03/03/2026',
+                    iq_fwhm_ins={
+                        'ifs': 0.1,
+                        # average FWHM on 95% FOV as also used in the WST_IFS_Tradeoff_Matrix. Link: https://stfc365.sharepoint.com/sites/Wide-FieldSpectroscopicTelescope/_layouts/15/DocIdRedir.aspx?ID=7ZWYDD3PV4SU-175398458-2008
+                        'mos': 0.1875,
+                    }
+                    )
     VLT = dict(effective_area_IFS=48.5,  # VLT effective area in m^2
                     effective_area_MOS=None,  # VLT effective area in m^2
                     diameter=8.0,  # primary diameter
