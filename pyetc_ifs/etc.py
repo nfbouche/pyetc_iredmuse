@@ -56,7 +56,6 @@ default_angstrom_edge = 2
 
 __all__ = [
     'ETC',
-    'get_data',
     'sersic',
     'moffat',
     '_checkline',
@@ -421,6 +420,7 @@ class ETC:
             ins['sky'].append(d)
 
         # all the transmission curves
+        self.logger.info(f"Reading {name} {chan}")
         filename = glob.glob(os.path.join(self.TRANSDIR, f'{name}_{chan}_noatm.fits'))[0]
         trans = Table.read(os.path.join(self.TRANSDIR, filename), unit_parse_strict="silent")
 
