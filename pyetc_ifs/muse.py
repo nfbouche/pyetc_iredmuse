@@ -71,7 +71,7 @@ class MUSE(ETC):
                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                               spaxel_size = 0.2, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                              dlbda = 1.0, # Angstroem/pixel, previously 0.5, updated on 03/03/2026
+                              dlbda = 1.25, # Angstroem/pixel, previously 0.5, updated on 03/03/2026
                               lbda1 = 4800, # starting wavelength in Angstroem
                               lbda2 = 9300, # end wavelength in Angstroem
                               lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
