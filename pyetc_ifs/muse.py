@@ -8,6 +8,7 @@ from mpdaf.log import setup_logging
 
 from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
+from . import __releasedate__ as DATEOFRELEASE
 
 # used by get_data
 from astropy.table import Table
@@ -32,11 +33,19 @@ class MUSE(ETC):
         # ------ Telescope ---------
         self.name = 'MUSE'
         self.throughput_model_desc = 'Throughput estimations by Nicolas Bouché'
-        self.throughput_model_version = '26/06/2026'
+        self.throughput_model_version = '14/07/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '26 June 2026',
+            'release_date': RELEASEDATE,
             'history': [
+                {
+                    'version': '0.1',
+                    'label': 'Version 0.1',
+                    'release_date': '26 June 2026',
+                    'changes': [
+                        'Initial version'
+                        ],
+                },
                 {
                     'version': '0.1',
                     'label': 'Version 0.1',
