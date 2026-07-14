@@ -5,7 +5,8 @@ A Python package for exposure time calculation and signal-to-noise ratio estimat
 for the WST instrument suite (IFS, MOS-LR, MOS-HR).
 """
 
-__version__ = "0.1"
+__version__ = "0.2"
+__releasedate__ = "14 July 2026"
 __author__ = "Nicolas Bouché & Matteo Ferro & Roland Bacon"
 
 # Import main classes and functions
