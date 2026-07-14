@@ -93,6 +93,8 @@ class ETC:
     _BROAD_WMAX_NM  = 1101.0  # nm  — small buffer above MOS LR red (~11000 Å)
     _BROAD_WDELTA_NM = 0.005  # nm  = 0.05 Å/point; needed for MOS-HR LSF convolutions
 
+    _transdata = {}
+
     WST = dict(effective_area_MOS=93.57,  # mean of median and weighted mean of the ICD document
                     effective_area_IFS=92.03,  # minimum of the ICD document
                     diameter=12.0,  # primary diameter
@@ -432,9 +434,10 @@ class ETC:
             ins['sky'].append(d)
 
         # all the transmission curves
-        self.logger.info(f"Reading {name} {chan}")
+        self.logger.info(f"Reading {name} {chan} into self._transdata")
         filename = glob.glob(os.path.join(self.TRANSDIR, f'{name}_{chan}_noatm.fits'))[0]
         trans = Table.read(os.path.join(self.TRANSDIR, filename), unit_parse_strict="silent")
+        self._transdata[chan] = trans
 
         # # # Not needed anymore from Olga's throughput files
         # We compute the total transmision (excluded atmosphere)
@@ -445,25 +448,23 @@ class ETC:
         # We compute the instrument only transmission (exluded CCD and telescope, all the other columns)
         trans['only_inst'] = trans['total'] / (trans['detector_QE'] * trans['telescope'])
 
+        skywave = ins['sky'][0]['emi'].wave
+        skycoord = skywave.coord()
+        
         ins['instrans'] = Spectrum(
-            data=np.interp(ins['sky'][0]['emi'].wave.coord(), trans['wave'] * 10, trans['total']),
-            wave=ins['sky'][0]['emi'].wave)
+            data=np.interp(skycoord, trans['wave'] * 10, trans['total']), wave=skywave)
         ins['telescope'] = Spectrum(
-            data=np.interp(ins['sky'][0]['emi'].wave.coord(), trans['wave'] * 10, trans['telescope']),
-            wave=ins['sky'][0]['emi'].wave)
+            data=np.interp(skycoord, trans['wave'] * 10, trans['telescope']), wave=skywave)
         ins['QE'] = Spectrum(
-            data=np.interp(ins['sky'][0]['emi'].wave.coord(), trans['wave'] * 10, trans['detector_QE']),
-            wave=ins['sky'][0]['emi'].wave)
+            data=np.interp(skycoord, trans['wave'] * 10, trans['detector_QE']), wave=skywave)
         ins['total_instrumental'] = Spectrum(
-            data=np.interp(ins['sky'][0]['emi'].wave.coord(), trans['wave'] * 10, trans['only_inst']),
-            wave=ins['sky'][0]['emi'].wave)
+            data=np.interp(skycoord, trans['wave'] * 10, trans['only_inst']), wave=skywave)
 
         ins['skys'] = list(set(moons))
         ins['wave'] = ins['instrans'].wave
         ins['chan'] = chan
         ins['name'] = name
-        ins[
-            'advice'] = 'Beware if you change the static sky files and/or transmission curves, even by a little marging, it is good to have in the files: lambda1_sky < lambda1_trans < lambda1_config, same for dlambda and opposite for lambda2 (they are all trimmed and resampled according to the configuration dictionary, this is done in order to avoid edges problems)'
+        ins['advice'] = 'Beware if you change the static sky files and/or transmission curves, even by a little marging, it is good to have in the files: lambda1_sky < lambda1_trans < lambda1_config, same for dlambda and opposite for lambda2 (they are all trimmed and resampled according to the configuration dictionary, this is done in order to avoid edges problems)'
         return
 
     def get_sky(self, obs=None):
