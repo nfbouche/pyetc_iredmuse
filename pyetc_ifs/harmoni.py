@@ -6,22 +6,23 @@ import numpy as np
 from mpdaf.obj import Spectrum, WaveCoord
 from mpdaf.log import setup_logging
 
-from .etc import ETC, get_data
+from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
 
 # used by get_data
 from astropy.table import Table
 import astropy.units as u
 
-CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-SKYDIR = CURDIR + '/sky'
-TRANSDIR = CURDIR + '/harmoni'
-
 class HARMONI(ETC):
     
-    def __init__(self, log=logging.INFO, skip_dataload=False):
+    CURDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    SKYDIR = CURDIR + '/sky'
+    TRANSDIR = CURDIR + '/harmoni'
+
+    def __init__(self, log=logging.INFO, skip_dataload=False, band='Jband'):
         """
             Initialize the iredMUSE class with telescope and instrument parameters.
+            band = 'zband'| 'Jband'| 'zJband' | 'Hband'| 'Kband' | 'HKband' (default 'Jband')
         """
         start_time = time.time()
         self.refdir = CURDIR
@@ -58,7 +59,17 @@ class HARMONI(ETC):
                             'ifs': 0.1, # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
                             }
                         )
-        self.tel = self.VLT
+        self.ELT = dict(effective_area_IFS=1195.5, # ELT 39m effective area in m^2
+                        effective_area_MOS=None, # ELT effective area in m^2
+                        diameter=39.0, # primary diameter
+                        desc='Based on Prelim Concept',
+                        version='14/07/2026',
+                        iq_fwhm_ins = {
+                            'ifs': 0.012, # assumed in the Prelim Concept, this probably considers also the detector (charge diffusion)
+                            }
+                        )
+        
+        self.tel = self.ELT
 
 
         # ------- GLAO parameters -----------
@@ -68,55 +79,80 @@ class HARMONI(ETC):
         )
         self.mcao = dict(
         )
+
+        # IFS spectral channel
+        chan = 'Jband'
+        self.ifs[chan] = dict( dlbda = 1.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
+                               lbda1 = 11300, # starting wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
+                               lsfpix = 2., # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
+                               )
+         
+        #IFS z channel
+        chan = 'zband'
+        self.ifs[chan] = dict(dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
+                               lbda1 = 9330, # starting wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
+                               lsfpix = 2., # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
+                              )
+
+        #IFS H channel
+        chan = 'Hband'
+        self.ifs[chan] = dict(dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
+                               lbda1 = 9330, # starting wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
+                               lsfpix = 2., # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
+                              )
+        #IFS K channel
+        chan = 'Kband'
+        self.ifs[chan] = dict(dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
+                               lbda1 = 9330, # starting wavelength in Angstroem
+                               lbda2 = 12000, # end wavelength in Angstroem
+                               lsfpix = 2., # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
+                              )
+     
+        self.detector= dict(
+            ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
+            dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
+        )
         # ------- IFS -----------
         self.ifs = {} 
-        self.ifs['channels'] = ['4mas', '6mas', '25mas']
-        # IFS z channel
-        chan = '4mas'
-        self.ifs[chan] = dict(desc = self.throughput_model_desc,
+        self.ifs['channels'] = [f'4mas{band}band', f'6mas{band}band', f'25mas{band}band']
+        
+        
+        # IFS assumes low/medium resolution mode, with 4mas, 6mas and 25mas spaxel sizes. 
+        # The spectral resolution is assumed to be R~3500, with a spectral sampling of 2 pixels per resolution element.
+        chan = self.ifs['channels'][0]
+        ins = dict(desc = self.throughput_model_desc,
                       version = self.throughput_model_version,
                               type = 'IFS',
                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
-                              iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
+                              iq_fwhm_ins = 0.010, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                               spaxel_size = 0.004, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                              dlbda = 1.0, # Angstroem/pixel, previously 0.5, updated on 03/03/2026
-                              lbda1 = 9330, # starting wavelength in Angstroem
-                              lbda2 = 11300, # end wavelength in Angstroem
-                              lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                              ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
-                              dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
+        ins.append(self.ifs[band]) #spectral channel parameters
+        ins.append(self.detector) #detector parameters
+
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
-            # IFS z channel
-        chan = '6mas'
+            self.get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+
+        chan = self.ifs['channels'][1]
         self.ifs[chan] = dict(desc=self.throughput_model_desc,
                               version=self.throughput_model_version,
                               type='IFS',
                               iq_fwhm_tel=self.tel['iq_fwhm_ins']['ifs'],  # fwhm PSF of telescope
-                              iq_fwhm_ins=0.13,
+                              iq_fwhm_ins=0.012,
                               # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                               iq_beta=2.80,  # beta PSF of telescope + instrument (non-AO Moffat)
                               spaxel_size=0.006,
-                              # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                              dlbda=1.0,  # Angstroem/pixel, previously 0.5, updated on 03/03/2026
-                              lbda1=9330,  # starting wavelength in Angstroem
-                              lbda2=11300,  # end wavelength in Angstroem
-                              lsfpix=2.2,  # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                              ron=7,  # readout noise (e-) # squared sum for the 2x1 binning
-                              dcurrent=0.02 * 3600,  # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
+        ins.append(self.ifs[band]) #spectral channel parameters
+        ins.append(self.detector) #detector parameters
+
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
-            # IFS z channel
-        chan = '25mas'
+            self.get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+        chan = self.ifs['channels'][2]
         self.ifs[chan] = dict(desc=self.throughput_model_desc,
                               version=self.throughput_model_version,
                               type='IFS',
@@ -125,64 +161,13 @@ class HARMONI(ETC):
                               # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                               iq_beta=2.80,  # beta PSF of telescope + instrument (non-AO Moffat)
                               spaxel_size=0.025,
-                              # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                              dlbda=1.0,  # Angstroem/pixel, previously 0.5, updated on 03/03/2026
-                              lbda1=9330,  # starting wavelength in Angstroem
-                              lbda2=11300,  # end wavelength in Angstroem
-                              lsfpix=2.2,  # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                              ron=7,  # readout noise (e-) # squared sum for the 2x1 binning
-                              dcurrent=0.02 * 3600,  # dark current (e-/pixel/h) # sum for the 2x1 binning
                               )
-        if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
+        ins.append(self.ifs[band]) #spectral channel parameters
+        ins.append(self.detector) #detector parameters
 
-        # IFS red channel
-        chan = 'Jband'
-        self.ifs[chan] = dict(desc=self.throughput_model_desc,
-                       version = self.throughput_model_version,
-                               type='IFS',
-                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
-                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
-                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
-                               spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                               dlbda = 1.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
-                               lbda1 = 11300, # starting wavelength in Angstroem
-                               lbda2 = 12000, # end wavelength in Angstroem
-                               lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                               ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
-                               dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
-                               )
         if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
-
-        #IFS z+J channel
-        chan = 'zJband'
-        self.ifs[chan] = dict(desc=self.throughput_model_desc,
-                       version = self.throughput_model_version,
-                               type='IFS',
-                               iq_fwhm_tel = self.tel['iq_fwhm_ins']['ifs'], # fwhm PSF of telescope
-                               iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
-                               iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
-                               spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                               dlbda = 2.0, # Angstroem/pixel, previously 0.67, updated on 03/03/2026
-                               lbda1 = 9330, # starting wavelength in Angstroem
-                               lbda2 = 12000, # end wavelength in Angstroem
-                               lsfpix = 2.2, # LSF in spectel, previously 3.0, updated on 03/03/2026 ( * * * check)
-                               ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
-                               dcurrent = 0.02*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
-                               )
-        if not skip_dataload:
-            try:
-                get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
-            except Exception as e:
-                self.logger.error(f"Error occurred while loading data for channel {chan}: {e}")
-
+            self.get_data(self.ifs, chan, 'ifs', SKYDIR, TRANSDIR)
+            
         end_time = time.time()
         if log == logging.DEBUG or log == 'DEBUG':
             self.logger.debug(f"iredMUSE.__init__ processing time: {end_time - start_time:.4f} seconds")
