@@ -8,12 +8,11 @@ from mpdaf.log import setup_logging
 
 from .etc import ETC
 from . import __version__ as PACKAGE_VERSION
+from . import __releasedate__ as DATEOFRELEASE
 
 # used by get_data
 from astropy.table import Table
 import astropy.units as u
-
-
 
 class iredMUSE(ETC):
 
@@ -36,11 +35,19 @@ class iredMUSE(ETC):
         # ------ Telescope ---------
         self.name = 'iredMUSE'
         self.throughput_model_desc = 'Throughput estimations by Nicolas Bouché'
-        self.throughput_model_version = '26/06/2026'
+        self.throughput_model_version = '14/07/2026'
         self.release_info = {
             'version': PACKAGE_VERSION,
-            'release_date': '26 June 2026',
+            'release_date': DATEOFRELEASE,
             'history': [
+                {
+                    'version': '0.2',
+                    'label': 'Version 0.2',
+                    'release_date': '14 July 2026',
+                    'changes': [
+                        'bug fix in transmission curve'
+                        ],
+                },
                 {
                     'version': '0.1',
                     'label': 'Version 0.1',
@@ -112,9 +119,9 @@ class iredMUSE(ETC):
                                iq_fwhm_ins = 0.13, # fwhm PSF of instrument, previously 0.30, updated on 03/03/2026, this probably considers also the detector (charge diffusion)
                                iq_beta = 2.80, # beta PSF of telescope + instrument (non-AO Moffat)
                                spaxel_size = spaxel, # spaxel size in arcsec ( * * * check for the binning 2x1, could be 0.125)
-                               dlbda = 1.0, # Angstroem/pixel, 
-                               lbda1 = 9300, # starting wavelength in Angstroem
-                               lbda2 = 13000, # end wavelength in Angstroem
+                               dlbda = 1.5, # Angstroem/pixel, 
+                               lbda1 = 9330, # starting wavelength in Angstroem
+                               lbda2 = 12500, # end wavelength in Angstroem
                                lsfpix = 2.5, # LSF in spectel,
                                ron = 7, # readout noise (e-) # squared sum for the 2x1 binning
                                dcurrent = dcurrent*3600, # dark current (e-/pixel/h) # sum for the 2x1 binning
